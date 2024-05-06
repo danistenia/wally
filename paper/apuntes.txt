@@ -1,0 +1,59 @@
+## Apuntes paper: Where's wally? A machine learning approach ##
+
+Se han hecho muchos estudios de object detection y de caras, pero de caras de caricaturas (cartoons) no se ha estudiado tanto. El framework propuesto para este paper está compuesto por 2 etapas:
+
+1) Haar-cascade classifier basado en Viola-Jones framework que lo que hace es generar candidatos de las imágenes colapsadas de personajes en los libros de wally.
+2) Una red convolucional ligera que reclasifica los objetos pasados por la cascada. (? no entiendo esto, pero supongo que esto cambiará)
+
+Con 12 imágenes de pruebas se generaron 400 falsos positivos. Y las métricas fueron de recall de 84,61% y un f1-score de 78.54%. (Me falta acá el precision aunque creo que podemos calcularon puesto que ya tenemos el recall, podemos despejarlo de la fórmula)
+
+La pregunta de investigación sería: Las técnicas de face y object recognition sirven también para dibujos animados siendo que originalmente fueron desarrollados para escenarios reales?
+
+Se hace una explicación de los Haar-like que son basicamente features segun un algoritmo. Apriori no estoy enendiendo bien qué son, pero si es importante hacerlo lo entenderé bien, sino lo obviaré.
+
+Luego se hace un resumen o explicación de lo que son las CNN's, aquí no tengo comentarios, puesto que esto ya lo he estudiado hartas veces y no considero necesario hacer un resumen.
+
+En resumen, se muestra tanto Haar-cascade y se muestra CNN en explicación de las técnicas o algoritmos a utilizar.
+
+Data Repository
+
+- El repositorio de imágenes de wally se encuentra a continuación: https://github.com/vc1492a/Hey-Waldo
+- Las imágenes de este repositorio fueron tomadas del primer libro de wally.
+
+Métodos
+
+El método segun se muestra en el paper es entrenar una haar-cascade classifier para poder eliminar y ala vez seleccionar candidatos y luego pasarlos por una red neuronal para encontrar a wally o no. 
+
+El esquema que se muestra es entrenar un haar cascade, luego entrenar una red neuronal, luego detectar caras con el haar cascade y luego seleccionar a wally con la red convolucional.
+Los autores plantean que esto no es algo nuevo, pero la propuesta es hacerlo en imágenes de dibujos animados. (Esta estrategia está aca: https://ieeexplore.ieee.org/document/7299170 y también aca: https://ieeexplore.ieee.org/document/7961737)
+
+Haar like features
+
+Se probó este primer approach, pero hubieron muchos falsos positivos, por lo tanto, se necesitó utilizar una parte adicional para el modelo.
+Se utilizaron 2 approachs para las CNN's uno fue 2 CNN populares y la otra fue una arquitectura customizada.
+(Utilizaron ResNet y MobilNet, pero con los pesos y la arquitecturas ya definidas)
+
+Se utilizó la misma data para entrenar los modelos customs y las arquitecturas ya calculadas y se hizo el split clásico de 80 y 20, por otro lado, dice que para incrementar el accuracy se hizo algo llamado hard negative mining para que los mismos falsos positivos no fueran detectados.
+
+Solamente los objetos de wally con una probabilidad de 90% fueron considerados como wally. Antes de entrenar se hizo un promedio de la alturas de todas las imagenes en entrenamiento. Después se normalizaron los pixeles entre 0 y 1.
+
+Lo bueno que está una tabla con los resultados y está super bien explicado para contrastar los resultados,
+lo otro es que la arquitectura de la red está bien detallada para poder implmentarla y obtener los resultados y recrear el paper.
+En las conclusiones, se muestra que el dataset de entrenamiento igual es pequeño lo que limita el performance, pro otro lado, un trabajo futuro podría ser probar con benchmark de caras de personas dedicados para contrastar/comparar los resultados y performance computacional de una end to end CNN.
+
+El bench se encuentra: https://dl.acm.org/doi/10.1145/3394171.3413726
+
+The end.
+
+La data se encuentra acá: https://github.com/vc1492a/Hey-Waldo?tab=readme-ov-file
+
+Para crear nuestro propio haar like feature: https://www.youtube.com/watch?v=jG3bu0tjFbk
+
+label helper: https://github.com/HumanSignal/labelImg
+
+
+
+
+
+
+	
