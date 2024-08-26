@@ -45,7 +45,7 @@ El bench se encuentra: https://dl.acm.org/doi/10.1145/3394171.3413726
 
 The end.
 
-La data se encuentra acá: https://github.com/vc1492a/Hey-Waldo?tab=readme-ov-file
+La data se encuentra acá: 	
 
 Para crear nuestro propio haar like feature: https://www.youtube.com/watch?v=jG3bu0tjFbk
 
