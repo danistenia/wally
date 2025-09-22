@@ -41,7 +41,7 @@ class PatchBuilder:
             for y in range(64, self.img.y_length, 64):
                 print(y, x)
 
-    def building_coordanates(self, square_area):
+    def building_coordinates(self, square_area):
 
         x_stopper = round(self.img.x_length / square_area)
         y_stopper = round(self.img.y_length / square_area)
@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     #pb.build_patches(square_area=64)
 
-    pb.building_coordanates(square_area=64)
+    pb.building_coordinates(square_area=64)
     #print("Size de la imagen:", image.size)
 
     #print(json.dumps(pb.patch_dict, indent=4))
