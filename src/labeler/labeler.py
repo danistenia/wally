@@ -58,12 +58,12 @@ class PatchBuilder:
 
 
 
-        for idx, (y, y_prima) in enumerate(zip(range(0, self.img.y_length, square_area), 
-                              range(square_area, self.img.y_length, square_area))):
+        for idx, (y, y_prima) in enumerate(zip(range(0, self.img.y_length + square_area, square_area), 
+                              range(square_area, self.img.y_length + square_area, square_area))):
             
 
-            for jdx, (x, x_prima) in enumerate(zip(range(0, self.img.x_length, square_area), 
-                              range(square_area, self.img.x_length, square_area))):
+            for jdx, (x, x_prima) in enumerate(zip(range(0, self.img.x_length + square_area, square_area), 
+                              range(square_area, self.img.x_length + square_area, square_area))):
             
                 #print(f"y: {y, y_prima} y x: {x, x_prima}")
 
@@ -72,10 +72,27 @@ class PatchBuilder:
                                                         "y": (y, y_prima), 
                                                         "x": (x, x_prima)
                                                      }
+                
+        return self.patch_dict
+                
+    def draw_squares(self, square_area: int = 64, set_number: int = None):
+
+        path_dict = self.building_coordinates(square_area=square_area)
+        
+        for row in path_dict.keys():
+            for col in path_dict[row]:
+                cv2.rectangle(self.img.img, 
+                              (path_dict[row][col]["x"][0], path_dict[row][col]["y"][0]),
+                              (path_dict[row][col]["x"][1], path_dict[row][col]["y"][1]),
+                              (255, 0, 0),
+                              4)
+                
+        cv2.imshow('Image', self.img.img)
+        cv2.waitKey(0) # Waits indefinitely until a key is pressed.
+        cv2.destroyAllWindows() # Closes all windows opened by program.
 
 
 
-            #print(f"{'_' * 30}")
 
         
 
@@ -93,15 +110,17 @@ if __name__ == "__main__":
     image = ImageInput(img_path=img_path)
     pb = PatchBuilder(img=image)
 
-    # print("Size de la imagen:", image.size)
+    print("Size de la imagen:", image.size)
 
     #print(2048/64)
     #print(pb.build_patches(square_area=10))
 
     #pb.build_patches(square_area=64)
 
-    pb.building_coordinates(square_area=64)
+    pb.draw_squares(square_area=28)
+
+    #pb.building_coordinates(square_area=128)
     #print("Size de la imagen:", image.size)
 
     #print(json.dumps(pb.patch_dict, indent=4))
-    print(pb.patch_dict)
+    #print(pb.patch_dict)
