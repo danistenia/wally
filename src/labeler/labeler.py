@@ -76,25 +76,15 @@ class PatchBuilder:
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
+    def image_cutter(self):
+        pass
+
 
 if __name__ == "__main__":
     
     img_path = "/Users/danielvargas/Documents/wally/original-images/1.jpg"
 
     image = ImageInput(img_path=img_path)
-    pb = PatchBuilder(img=image, square_area=64)
-
-    print("Size de la imagen:", image.size)
-
-    #print(2048/64)
-    #print(pb.build_patches(square_area=10))
-
-    #pb.build_patches(square_area=64)
+    pb = PatchBuilder(img=image, square_area=192)
 
     pb.draw_squares()
-
-    #pb.building_coordinates(square_area=128)
-    #print("Size de la imagen:", image.size)
-
-    #print(json.dumps(pb.patch_dict, indent=4))
-    #print(pb.patch_dict)
