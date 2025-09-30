@@ -8,8 +8,15 @@ from labeler.labeler import ImageInput, PatchBuilder
 parser = argparse.ArgumentParser(description="Labeler de Wally con Tkinter")
 parser.add_argument("--img", required=True, help="Ruta de la imagen a etiquetar")
 parser.add_argument("--size", type=int, default=64, help="Tamaño del patch cuadrado")
-parser.add_argument("--out", default="info.dat", help="Archivo de salida para anotaciones")
-parser.add_argument("--display-size", type=int, default=192, help="Tamaño de visualización del patch en la app")
+parser.add_argument(
+    "--out", default="info.dat", help="Archivo de salida para anotaciones"
+)
+parser.add_argument(
+    "--display-size",
+    type=int,
+    default=192,
+    help="Tamaño de visualización del patch en la app",
+)
 args = parser.parse_args()
 
 img_path = args.img
@@ -38,6 +45,7 @@ for row, cols in patches.items():
 indice = 0
 bboxes = []  # Acumulador de bounding boxes (x, y, w, h)
 
+
 def mostrar_patch():
     """Muestra el patch actual y actualiza el contador."""
     global indice, patch_label, patch_tk
@@ -46,19 +54,24 @@ def mostrar_patch():
     patch = patch.resize((patch_display_size, patch_display_size))
     patch_tk = ImageTk.PhotoImage(patch)
     patch_label.config(image=patch_tk, text=nombre, compound="top")
-    contador_label.config(text=f"Patch {indice+1} de {len(patch_list)}",
-                          fg="black", font=("Arial", 12, "bold"))
+    contador_label.config(
+        text=f"Patch {indice+1} de {len(patch_list)}",
+        fg="black",
+        font=("Arial", 12, "bold"),
+    )
+
 
 def finalizar():
     """Escribe una sola línea en info.dat (si hubo Wallys) y cierra la app."""
     if bboxes:
         partes = [img_path, str(len(bboxes))]
-        for (x, y, w, h) in bboxes:
+        for x, y, w, h in bboxes:
             partes += [str(x), str(y), str(w), str(h)]
         linea = " ".join(partes) + "\n"
         with open(output_file, "a") as f:
             f.write(linea)
     ventana.destroy()
+
 
 def siguiente():
     """Avanza o finaliza si no hay más patches."""
@@ -69,9 +82,11 @@ def siguiente():
     else:
         finalizar()
 
+
 def not_wally():
     """No se agrega bbox; solo avanzar."""
     siguiente()
+
 
 def wally():
     """Marca este patch como Wally y guarda bbox absoluto."""
@@ -81,6 +96,7 @@ def wally():
     h = y2 - y1
     bboxes.append((x1, y1, w, h))
     siguiente()
+
 
 # ------- Tkinter GUI -------
 ventana = tk.Tk()
@@ -104,12 +120,26 @@ contador_label.pack(pady=6)
 botonera = tk.Frame(ventana, bg="lightgray")
 botonera.pack(pady=12)
 
-boton_not_wally = Button(botonera, text="❌ Not Wally", command=not_wally,
-                         bg="#f28b82", fg="black", font=("Arial", 12, "bold"), width=14)
+boton_not_wally = Button(
+    botonera,
+    text="❌ Not Wally",
+    command=not_wally,
+    bg="#f28b82",
+    fg="black",
+    font=("Arial", 12, "bold"),
+    width=14,
+)
 boton_not_wally.pack(side="left", padx=10)
 
-boton_wally = Button(botonera, text="✅ Wally", command=wally,
-                     bg="#81c995", fg="black", font=("Arial", 12, "bold"), width=14)
+boton_wally = Button(
+    botonera,
+    text="✅ Wally",
+    command=wally,
+    bg="#81c995",
+    fg="black",
+    font=("Arial", 12, "bold"),
+    width=14,
+)
 boton_wally.pack(side="right", padx=10)
 
 # Atajos de teclado
