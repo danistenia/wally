@@ -9,6 +9,12 @@ Por suerte en nuestra área siempre existe gente que contribuye. Acá hay un rep
 
 Repo: https://github.com/vc1492a/Hey-Waldo
 
+## Cómo ejecutar la aplicación para etiquetar?
+```bash
+python labeler_app.py --img [RUTA_IMAGE] --size 64 --out info.dat --display-size 192
+```
+
+
 ## Resources
 
 Using Haar Cascade (Sentdex): https://www.youtube.com/watch?v=88HdqNDQsEk&list=PLvVx8lH-gGeC8XmmrsG855usswhwt5Tr1&index=6
