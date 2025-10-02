@@ -1,5 +1,5 @@
 /books/
 DS_Store
-*.jpg
+#*.jpg
 .png
 __pycache__
