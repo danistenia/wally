@@ -14,6 +14,10 @@ Repo: https://github.com/vc1492a/Hey-Waldo
 python labeler_app.py --img [RUTA_IMAGE] --size 64 --out info.dat --display-size 192
 ```
 
+## TODO's
+
+- [ ] Tengo que arreglar la imagen 13 que está mal etiquetada.
+
 
 ## Resources
 

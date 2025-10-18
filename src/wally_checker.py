@@ -88,8 +88,12 @@ def find_wally_by_row_number(file_path: str, row_number: int) -> None:
 
 if __name__ == "__main__":
 
-    img_path = "/Users/danielvargas/Documents/wally/original-images/1.jpg"
+    #img_path = "/Users/danielvargas/Documents/wally/original-images/13.jpg"
 
     # Example
-    # find_wally_by_coords(image_path=img_path, x=512, y=512, w=256, h=256)
-    find_wally_by_row_number(file_path="info.dat", row_number=1)
+    #find_wally_by_coords(image_path=img_path, x=1280, y=64, w=64, h=64)
+
+    file_path = "info.dat"
+    find_wally_by_row_number(file_path=file_path, row_number=19)
+
+    # El 13 o la linea 13 no se si está bien etiquetada.
