@@ -94,6 +94,4 @@ if __name__ == "__main__":
     #find_wally_by_coords(image_path=img_path, x=1280, y=64, w=64, h=64)
 
     file_path = "info.dat"
-    find_wally_by_row_number(file_path=file_path, row_number=19)
-
-    # El 13 o la linea 13 no se si está bien etiquetada.
+    find_wally_by_row_number(file_path=file_path, row_number=18)# El 13 o la linea 13 no se si está bien etiquetada.

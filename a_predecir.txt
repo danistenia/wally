@@ -1,0 +1,1 @@
+../original-images/17.jpg 1 704 256 64 64 #linea 17
