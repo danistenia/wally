@@ -14,6 +14,20 @@ Repo: https://github.com/vc1492a/Hey-Waldo
 python labeler_app.py --img [RUTA_IMAGE] --size 64 --out info.dat --display-size 192
 ```
 
+## Framework de 2 etapas (reproducción del paper)
+
+El paper detecta a Wally en dos etapas: un **Haar-cascade** propone candidatos
+(descarta el fondo) y una **CNN ligera** reclasifica cada candidato como
+Wally / no-Wally. La reproducción completa está documentada en
+[`PAPER_REPRODUCTION.md`](PAPER_REPRODUCTION.md).
+
+Para buscar a Wally en una imagen (hay un modelo ya entrenado):
+
+```bash
+cd src
+python detect_wally.py --image original-images/9.jpg --out resultado.jpg --conf 0.99
+```
+
 ## TODO's
 
 - [ ] Tengo que arreglar la imagen 13 que está mal etiquetada.

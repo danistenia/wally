@@ -1,0 +1,7 @@
+# Dependencias para el framework de 2 etapas (Haar-cascade + CNN).
+# La CNN reclasificadora usa PyTorch (CPU es suficiente).
+numpy
+opencv-python
+torch
+# Opcional, solo para los visualizadores (checker.py / wally_checker.py):
+matplotlib

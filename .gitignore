@@ -3,3 +3,5 @@
 #*.jpg
 .png
 __pycache__
+# dataset generado para la CNN (regenerable con prepare_dataset.py)
+src/cnn_dataset/
