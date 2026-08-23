@@ -25,7 +25,7 @@ Para buscar a Wally en una imagen (hay un modelo ya entrenado):
 
 ```bash
 cd src
-python detect_wally.py --image original-images/9.jpg --out resultado.jpg --conf 0.99
+python detect_wally.py --image original-images/9.jpg --out resultado.jpg --conf 0.9999
 ```
 
 ## TODO's

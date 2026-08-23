@@ -19,12 +19,75 @@ El paper detecta a Wally combinando una técnica clásica con una moderna:
 La ventaja frente a una CNN end-to-end es velocidad: el cascade elimina rápido
 casi todo el fondo y la CNN solo evalúa un puñado de candidatos.
 
-## Qué ya existía en el repo (etapa 1)
+## Etapa 1: el Haar-cascade (reentrenado)
 
-- `src/data_cascade_HAAR/cascade.xml` — el Haar-cascade ya entrenado (64×64).
-  Se **reutiliza tal cual**; no se reentrena (OpenCV 4.x ya no trae
-  `opencv_traincascade`, y el cascade existente funciona).
-- `info.dat`, labels YOLO, carpeta `negatives/`, el labeler y `checker.py`.
+La primera versión de este repo reutilizaba un cascade ya entrenado (64×64,
+4-5 stages) sin retocarlo, porque OpenCV 4.x no trae `opencv_traincascade` en
+el paquete pip. Esa versión funcionaba razonablemente en las escenas
+originales (1-19) pero **fallaba por completo** en escenas agregadas después
+(20-32): Wally mide ahí 14-32px reales (vs. 64px fijos en las originales), y
+una ventana de cascade de 64px no puede representar un objeto más chico que
+sí misma con suficiente detalle.
+
+Diagnóstico (ver historial de la sesión que hizo este cambio): sobre las 12
+escenas densas, el cascade viejo proponía candidatos con ~0 IoU contra el
+Wally real en 11 de 12 — no era falta de datos genérica, era un desajuste de
+escala entre el cascade y el tamaño real del objeto.
+
+Solución: se compiló `opencv_traincascade`/`opencv_createsamples` desde el
+código fuente de OpenCV 3.4 (siguen en el repo de OpenCV, solo que ya no se
+distribuyen en el paquete pip) usando un contenedor Docker, y se reentrenó el
+cascade con:
+
+- **ventana 24×24** (antes 64×64) — para poder representar a Wally en el
+  régimen de escala donde el cascade viejo era ciego.
+- **1317 positivos** generados con jitter (padding/offset/flip/brillo
+  aleatorio) a partir de las ~30 instancias reales de Wally, más **3510
+  negativos** de `negatives/` y de zonas de las escenas sin Wally.
+- **13 stages** (BOOST/GAB, `featureType=HAAR`, `mode=ALL`), entrenamiento
+  detenido por falta de positivos "limpios" para la stage 14 (esperable: cada
+  stage descarta los positivos que ya rechaza, y con pocos datos reales el
+  pool se agota) — 13 stages ya alcanzan el objetivo.
+
+El cascade nuevo vive en `src/data_cascade_HAAR/cascade.xml` (el viejo queda
+como referencia en `cascade_old_64x64.xml`). El dataset y los scripts usados
+para reentrenarlo están en `src/prepare_cascade_dataset.py` y
+`src/cascade_dataset/` (regenerable, no está pensado para vivir en git).
+
+Para reproducir el reentrenamiento del cascade (tarda: el training completo
+tomó varias horas en esta sesión):
+
+```bash
+# 1) construir la imagen con opencv_traincascade/opencv_createsamples
+#    (no vienen en el paquete pip; hay que compilarlos de OpenCV 3.4 fuente)
+docker build -t wally-cascade-tools docker/opencv-traincascade
+
+# 2) armar el dataset (positivos jitterizados + negativos)
+cd src && python prepare_cascade_dataset.py
+
+# 3) empaquetar el .vec y entrenar (desde la raiz del repo)
+docker run --rm -v "$(pwd)/src/cascade_dataset:/wally/cascade_dataset" \
+  wally-cascade-tools bash -c "
+    cd /wally/cascade_dataset &&
+    /build/opencv/build/bin/opencv_createsamples -info info.dat -vec positives.vec -num <N_POSITIVOS> -w 24 -h 24 &&
+    /build/opencv/build/bin/opencv_traincascade -data classifier -vec positives.vec -bg bg.txt \
+      -numPos <NUMPOS> -numNeg <NUMNEG> -numStages 15 -w 24 -h 24 \
+      -featureType HAAR -mode ALL -minHitRate 0.995 -maxFalseAlarm 0.5
+  "
+
+# 4) usar el resultado
+cp src/cascade_dataset/classifier/cascade.xml src/data_cascade_HAAR/cascade.xml
+```
+
+Si `traincascade` se corta antes de llegar a `numStages` (por ejemplo, se
+queda sin positivos "limpios" en una escena muy chica como esta), se puede
+volver a invocar el mismo comando con `-numStages <n_stages_ya_completados>`:
+detecta los `stageN.xml` existentes y solo empaqueta el `cascade.xml` final,
+sin reentrenar desde cero.
+
+- `info.dat`, labels YOLO (`original-images_yolo_labels*/`), carpeta
+  `negatives/`, el labeler y `checker.py` siguen siendo la fuente de verdad
+  de las anotaciones.
 
 ## Qué se agregó para completar el paper (etapa 2)
 
@@ -36,7 +99,10 @@ src/cnn_reclassifier/
   mine_round2.py      # hard negative mining iterativo
   pipeline.py         # framework completo de 2 etapas (cascade -> CNN -> NMS)
   wally_cnn.pt        # modelo entrenado (listo para usar)
-src/detect_wally.py   # CLI: encuentra a Wally en una imagen cualquiera
+src/detect_wally.py           # CLI: encuentra a Wally en una imagen cualquiera
+src/evaluate.py                # evalua el pipeline sobre las escenas etiquetadas
+src/prepare_cascade_dataset.py # arma el dataset para reentrenar el cascade (etapa 1)
+src/cascade_dataset/           # dataset + cascade.xml generados (regenerable)
 ```
 
 ### Arquitectura de la CNN (fiel al paper §4.3)
@@ -85,29 +151,57 @@ python -m cnn_reclassifier.mine_round2 --conf 0.6 --cap 120 --round 3
 python -m cnn_reclassifier.train
 
 # 4) buscar a Wally en una imagen
-python detect_wally.py --image original-images/9.jpg --out resultado.jpg --conf 0.99
+python detect_wally.py --image original-images/9.jpg --out resultado.jpg --conf 0.9999
 ```
 
-El umbral `--conf` controla el compromiso recall/falsos-positivos: el paper usa
-**0.90**; subirlo a **0.99** reduce mucho los falsos positivos manteniendo casi
-todo el recall (recomendado para inspección visual).
+El umbral `--conf` controla el compromiso recall/falsos-positivos. El paper usa
+**0.90**, pero con el cascade nuevo (ventana 24×24) eso deja demasiado ruido:
+al proponer candidatos en un rango de escalas mucho más amplio, la cantidad de
+candidatos por escena es mucho mayor que con el cascade de 64×64, así que un
+0.11% de falsos positivos a nivel de crop (F1 99.7% en validación) se traduce
+en cientos de falsos positivos por escena. Subir el umbral a **0.9999**
+(default actual del modelo guardado) recorta eso ~11x sin perder recall real.
 
 ## Resultados
 
-Sobre las escenas etiquetadas del repo, el framework encuentra a Wally en
-**~10–11 de 17** escenas. El **techo de la etapa 1** es 14/17: el Haar-cascade
-simplemente no propone a Wally en las imágenes 3, 4 y 5 (limitación del cascade
-entrenado; ninguna CNN puede recuperarlas). Es decir, estamos cerca del máximo
-alcanzable con este cascade.
+Sobre las 30 escenas etiquetadas del repo (in-sample; ver más abajo por qué
+no es aún un test set real):
 
-Métricas de la CNN sobre validación (crops, umbral 90%): accuracy ~98–99%,
-precisión ~95%, recall ~94–96%, F1 ~95%. El paper reporta, sobre 12 escenas de
-test: recall 84.61% y F1 78.54% con su modelo custom (detectó a Wally en 10/12).
+| | Cascade 64×64 + CNN original | Cascade 24×24 + CNN reentrenada |
+|---|---|---|
+| Recall | 16/30 (ceiling documentado: 14/17 en las escenas originales) | **29/30** a `conf=0.9999`, 30/30 a `conf=0.90` |
+| Escenas densas (20-32) | 0/12 — el cascade no proponía nada cerca de Wally | **12/12** |
+| Falsos positivos totales | no medido sistemáticamente | 438 (`conf=0.9999`) vs. 5012 (`conf=0.90`) |
 
-### Cómo mejorar (trabajo futuro, como sugiere el paper)
+La única escena que falla a `conf=0.9999` es `25.jpg`, la que tiene el Wally
+más chico del dataset (14px de ancho) — el candidato correcto existe pero su
+probabilidad cae un poco por debajo del umbral.
 
-- Reentrenar el **Haar-cascade** con más positivos para subir el techo (recuperar
-  imágenes 3/4/5).
-- Más datos de entrenamiento para la CNN (el dataset es chico, la principal
-  limitación que menciona el paper).
-- Más rondas de hard negative mining para bajar los falsos positivos.
+Métricas de la CNN sobre validación (crops, umbral 90%): accuracy 99.55%,
+precisión 99.89%, recall 99.51%, F1 99.70%, sobre un dataset de 22370
+positivos / 7390 negativos regenerado contra el cascade nuevo (incluye hard
+negative mining con `mine_cascade` + una ronda adicional con
+`mine_round2.py`). El paper reporta, sobre 12 escenas de test: recall 84.61%
+y F1 78.54% con su modelo custom (detectó a Wally en 10/12).
+
+**Importante:** estos números son **in-sample** — las 30 escenas usadas para
+medir son las mismas que alimentan el entrenamiento de la CNN (el cascade no
+usa etiquetas para entrenar per se, pero sus positivos jitterizados sí salen
+de estas escenas). Hay un mecanismo de test set held-out ya armado
+(`HELD_OUT_TEST` en `cnn_reclassifier/prepare_dataset.py`, hoy `{"17", "26"}`)
+que excluye esas escenas del dataset de entrenamiento, pero **`17.jpg` y
+`26.jpg` todavía no están etiquetadas** — son las dos escenas nuevas que
+motivaron esta ronda de mejoras. Etiquetarlas (con el labeler o labelme +
+`labelme_to_yolo.py`) haría que `evaluate.py` reporte una sección TEST real.
+
+### Cómo mejorar (trabajo futuro)
+
+- **Etiquetar `17.jpg` y `26.jpg`** para tener una métrica de generalización
+  real, no solo in-sample.
+- Bajar más los falsos positivos: otra ronda de `mine_round2.py` ahora que
+  hay un cascade+CNN mucho más fuertes, o afinar `min_neighbors`/NMS (se
+  probó agrupar con `minNeighbors` de OpenCV pero resultó lento e
+  inconsistente con cascades de ventana chica — quedó descartado a favor de
+  filtrar solo por umbral de confianza).
+- Recuperar `25.jpg` (Wally de 14px): más positivos jitterizados a esa escala
+  específica, o revisar si vale la pena bajar `min_size` en `detectMultiScale`.

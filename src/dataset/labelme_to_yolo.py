@@ -33,8 +33,12 @@ def convert(json_path):
 
 
 def main():
-    json_dir = "images"   # donde están los .json
-    label_dir = "labels"
+    
+    json_dir = "../original-images"
+    label_dir = "../original-images_yolo_labels"
+    
+    # json_dir = "images"   # donde están los .json
+    # label_dir = "labels"
     os.makedirs(label_dir, exist_ok=True)
 
     for json_file in Path(json_dir).glob("*.json"):

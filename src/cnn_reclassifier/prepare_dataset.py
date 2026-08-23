@@ -33,9 +33,23 @@ INFO_DAT = os.path.join(SRC, "info.dat")
 ORIG_DIR = os.path.join(SRC, "original-images")
 YOLO_DIR = os.path.join(SRC, "original-images_yolo_labels")
 YOLO_NOHD_DIR = os.path.join(SRC, "original-images_yolo_labels_no_hd")
-VAL_IMG_DIR = os.path.join(SRC, "dataset", "images", "val")
 NEG_DIR = os.path.join(SRC, "negatives")
 CASCADE_PATH = os.path.join(SRC, "data_cascade_HAAR", "cascade.xml")
+
+# Escenas etiquetadas pero reservadas como test set: NUNCA deben aportar
+# positivos/negativos/hard-negatives a la CNN. gather_wally_boxes() las
+# incluye igual (para que el script de evaluacion las pueda puntuar); quien
+# construye el dataset de entrenamiento debe filtrarlas con held_out_split().
+HELD_OUT_TEST = {"17", "26"}
+
+
+def held_out_split(wally_boxes):
+    """Separa wally_boxes en (train, test) segun HELD_OUT_TEST (por stem de archivo)."""
+    train, test = {}, {}
+    for img_path, bxs in wally_boxes.items():
+        stem = os.path.splitext(os.path.basename(img_path))[0]
+        (test if stem in HELD_OUT_TEST else train)[img_path] = bxs
+    return train, test
 
 # El dataset generado es regenerable; por defecto vive en src/cnn_dataset.
 # Se puede redirigir con WALLY_DATA_DIR (util en entornos de solo-lectura).
@@ -49,10 +63,10 @@ NEG_OUT_DIR = os.path.join(OUT_DIR, "negatives")
 # predecir. minNeighbors=0 hace que el cascade sobre-proponga (como en el paper).
 DETECT = dict(
     max_side=2600,
-    scale_factor=1.05,
+    scale_factor=1.03,
     min_neighbors=0,
-    min_size=40,
-    max_size=200,
+    min_size=16,
+    max_size=400,
 )
 HARD_NEG_PER_IMAGE = 200  # tope de hard-negatives por escena (se muestrean)
 
@@ -101,19 +115,21 @@ def gather_wally_boxes():
     """Junta todas las cajas de Wally de todas las fuentes -> {img_path: [boxes]}."""
     boxes = parse_info_dat()
 
-    # labels YOLO para 20-32. Preferimos _yolo_labels; usamos _no_hd si falta.
-    for n in range(20, 33):
-        # localizar la imagen
-        img_path = os.path.join(ORIG_DIR, f"{n}.jpg")
-        if not os.path.exists(img_path):
-            img_path = os.path.join(VAL_IMG_DIR, f"{n}.jpg")
-        if not os.path.exists(img_path):
+    # Escenas ya cubiertas por info.dat (1-19, coords a mano) no se duplican.
+    already = {os.path.splitext(os.path.basename(p))[0] for p in boxes}
+
+    # El resto de las escenas en original-images/ usa labels YOLO (labelme ->
+    # labelme_to_yolo.py). Se descubren automaticamente, sin rango fijo, para
+    # que una escena nueva se sume sola en cuanto tenga su .txt generado.
+    for img_path in sorted(glob.glob(os.path.join(ORIG_DIR, "*.jpg"))):
+        stem = os.path.splitext(os.path.basename(img_path))[0]
+        if stem in already:
             continue
-        lbl = os.path.join(YOLO_DIR, f"{n}.txt")
+        lbl = os.path.join(YOLO_DIR, f"{stem}.txt")
         if not os.path.exists(lbl):
-            lbl = os.path.join(YOLO_NOHD_DIR, f"{n}.txt")
+            lbl = os.path.join(YOLO_NOHD_DIR, f"{stem}.txt")
         if not os.path.exists(lbl):
-            continue
+            continue  # escena sin anotar todavia (ej. 26.jpg)
         img = cv2.imread(img_path)
         if img is None:
             continue
@@ -322,10 +338,14 @@ def main():
                     pass
 
     print("Juntando cajas de Wally...")
-    wally_boxes = gather_wally_boxes()
+    all_boxes = gather_wally_boxes()
+    wally_boxes, test_boxes = held_out_split(all_boxes)
     n_imgs = len(wally_boxes)
     n_wally = sum(len(v) for v in wally_boxes.values())
-    print(f"  {n_wally} instancias de Wally en {n_imgs} escenas etiquetadas")
+    print(f"  {n_wally} instancias de Wally en {n_imgs} escenas de entrenamiento")
+    if test_boxes:
+        held = ", ".join(sorted(os.path.basename(p) for p in test_boxes))
+        print(f"  (excluidas del dataset, reservadas como test: {held})")
 
     print("Extrayendo positivos (con augmentation)...")
     n_pos = extract_positives(wally_boxes)

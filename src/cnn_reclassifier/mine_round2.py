@@ -22,6 +22,7 @@ import cv2
 from cnn_reclassifier.prepare_dataset import (
     NEG_OUT_DIR,
     gather_wally_boxes,
+    held_out_split,
     overlaps,
 )
 from cnn_reclassifier.pipeline import WallyDetector
@@ -38,7 +39,7 @@ def main():
 
     os.makedirs(NEG_OUT_DIR, exist_ok=True)
     det = WallyDetector()
-    wally_boxes = gather_wally_boxes()
+    wally_boxes, _ = held_out_split(gather_wally_boxes())
 
     start = len(glob.glob(os.path.join(NEG_OUT_DIR, f"neg_r{args.round}_*.png")))
     added = 0

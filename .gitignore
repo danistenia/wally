@@ -5,3 +5,7 @@
 __pycache__
 # dataset generado para la CNN (regenerable con prepare_dataset.py)
 src/cnn_dataset/
+# dataset + cascade compilado (regenerable con prepare_cascade_dataset.py)
+src/cascade_dataset/
+# resultados de entrenamiento/inferencia (Ultralytics u otros experimentos)
+runs/

@@ -25,6 +25,7 @@ SRC = os.path.dirname(HERE)
 
 DEFAULT_CASCADE = os.path.join(SRC, "data_cascade_HAAR", "cascade.xml")
 DEFAULT_MODEL = os.environ.get("WALLY_MODEL", os.path.join(HERE, "wally_cnn.pt"))
+DEVICE = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
 
 
 def nms(boxes, iou_thresh=0.3):
@@ -66,6 +67,7 @@ class WallyDetector:
         self.model = WallyCNN()
         self.model.load_state_dict(ck["state_dict"])
         self.model.eval()
+        self.model.to(DEVICE)
         self.threshold = ck.get("threshold", 0.90)
 
     def detect(
@@ -73,10 +75,10 @@ class WallyDetector:
         image_path,
         conf=None,
         max_side=2600,
-        scale_factor=1.05,
+        scale_factor=1.03,
         min_neighbors=0,
-        min_size=40,
-        max_size=200,
+        min_size=16,
+        max_size=400,
     ):
         """Devuelve las detecciones de Wally: [(x, y, w, h, prob), ...] en coords
         de la imagen ORIGINAL."""
@@ -100,27 +102,39 @@ class WallyDetector:
             maxSize=(max_size, max_size),
         )
 
-        # 3) etapa 2: la CNN re-clasifica los candidatos (en lotes, por velocidad)
-        tensors, boxes = [], []
-        for (x, y, w, h) in candidates:
-            crop = img_s[y : y + h, x : x + w]
-            if crop.size == 0:
-                continue
-            tensors.append(preprocess_bgr(crop))
-            boxes.append((int(x), int(y), int(w), int(h)))
-
+        # 3) etapa 2: la CNN re-clasifica los candidatos, en lotes STREAMING (no
+        # se junta la lista completa de tensores primero: con cascades chicos
+        # (24x24) una escena densa puede proponer cientos de miles de
+        # candidatos, y precalcular todos los tensores antes de batchear se
+        # queda sin memoria).
         kept = []
         inv = 1.0 / scale
+        batch_size = 4096
         with torch.no_grad():
-            for i in range(0, len(tensors), 512):
-                batch = torch.stack(tensors[i : i + 512])
-                probs = torch.softmax(self.model(batch), dim=1)[:, 1]
-                for j, p in enumerate(probs.tolist()):
+            batch_tensors, batch_boxes = [], []
+
+            def flush():
+                if not batch_tensors:
+                    return
+                batch = torch.stack(batch_tensors).to(DEVICE)
+                probs = torch.softmax(self.model(batch), dim=1)[:, 1].cpu()
+                for (x, y, w, h), p in zip(batch_boxes, probs.tolist()):
                     if p > conf:
-                        x, y, w, h = boxes[i + j]
                         kept.append(
                             (int(x * inv), int(y * inv), int(w * inv), int(h * inv), p)
                         )
+                batch_tensors.clear()
+                batch_boxes.clear()
+
+            for (x, y, w, h) in candidates:
+                crop = img_s[y : y + h, x : x + w]
+                if crop.size == 0:
+                    continue
+                batch_tensors.append(preprocess_bgr(crop))
+                batch_boxes.append((int(x), int(y), int(w), int(h)))
+                if len(batch_tensors) >= batch_size:
+                    flush()
+            flush()
 
         return nms(kept)
 
