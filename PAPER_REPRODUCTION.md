@@ -133,7 +133,13 @@ PyTorch (misma arquitectura).
 - **Mining iterativo (`mine_round2.py`):** tras entrenar, se corre el pipeline
   completo y los falsos positivos que aún produce se reinyectan como negativos.
   Reentrenar con ellos reduce los falsos positivos, como busca el paper
-  ("that the same false positives were not detected").
+  ("that the same false positives were not detected"). Se corrieron 3 rondas
+  hasta ahora: la 3ra (`--round 3`, contra el cascade+CNN calibrados de esta
+  ronda) agregó 3029 hard negatives nuevos (10419 negativos totales) y bajó
+  los falsos positivos in-sample de 417 a 49 sin perder recall (ver
+  "Resultados"). Cada ronda nueva vale la pena repetirla tras cualquier
+  cambio al modelo (recalibrar, reentrenar), porque los falsos positivos que
+  produce el pipeline cambian con el modelo.
 
 ## Cómo ejecutar
 
@@ -155,7 +161,7 @@ python -m cnn_reclassifier.train
 python -m cnn_reclassifier.calibrate
 
 # 5) buscar a Wally en una imagen
-python detect_wally.py --image original-images/9.jpg --out resultado.jpg --conf 0.998
+python detect_wally.py --image original-images/9.jpg --out resultado.jpg --conf 0.9998
 ```
 
 El umbral `--conf` controla el compromiso recall/falsos-positivos. El paper usa
@@ -164,9 +170,8 @@ al proponer candidatos en un rango de escalas mucho más amplio, la cantidad de
 candidatos por escena es mucho mayor que con el cascade de 64×64, así que un
 0.11% de falsos positivos a nivel de crop (F1 99.7% en validación) se traduce
 en cientos de falsos positivos por escena. El default actual del modelo
-guardado es **0.998**, ya sobre probabilidades **calibradas** (ver abajo) —
-antes de calibrar hacía falta subir a 0.9999 para lograr un recorte de ruido
-similar.
+guardado es **0.9998**, ya sobre probabilidades **calibradas** y con una 3ra
+ronda de hard-negative mining (ver abajo).
 
 ### Calibración de la confianza (temperature scaling)
 
@@ -198,22 +203,27 @@ escena (`17.jpg`), el número de candidatos que superan 0.9999 baja de 290 a
 aunque no lo mida el ECE del set de validación.
 
 Efecto práctico: el barrido de umbrales que antes saltaba de 0.90 (5012 FP)
-a 0.9999 (438 FP) sin puntos intermedios, ahora es gradual:
+a 0.9999 (438 FP) sin puntos intermedios, ahora es gradual. Tabla actualizada
+tras la 3ra ronda de hard-negative mining (ver sección "Dataset y hard
+negative mining"), que es la que de verdad bajó el ruido — la calibración
+sola (sin la ronda 3) ya daba puntos intermedios, pero con el modelo viejo
+el mejor punto de recall completo seguía costando ~1000 FP:
 
 | conf (calibrado) | recall | FP totales |
 |---|---|---|
-| 0.90 | 30/30 | 3445 |
-| 0.95 | 30/30 | 2343 |
-| **0.99** | **30/30** | **983** |
-| 0.995 | 29/30 (falla 25.jpg) | 666 |
-| **0.998 (default)** | **29/30 (falla 25.jpg)** | **417** |
-| 0.999 | 27/30 (falla 25.jpg, 30.jpg, 31.jpg) | 293 |
-| 0.9999 | 27/30 (falla 25.jpg, 30.jpg, 31.jpg) | 110 |
+| 0.90 | 30/30 | 1454 |
+| 0.95 | 30/30 | 926 |
+| 0.99 | 30/30 | 331 |
+| 0.995 | 30/30 | 224 |
+| **0.998** | **30/30** | **136** |
+| 0.9995 | 30/30 | 66 |
+| **0.9998 (default)** | **30/30** | **49** |
+| 0.9999 | 27/30 (falla 25.jpg, 30.jpg, 31.jpg) | 38 |
 
-`0.998` quedó como default porque iguala el recall del mejor punto
-pre-calibración (29/30, la misma única falla conocida `25.jpg`) con menos
-falsos positivos (417 vs 438). `0.99` es la alternativa si se prefiere
-recall 30/30 (recupera `25.jpg`) a cambio de más ruido (983 FP).
+`0.9998` quedó como default: es el punto más estricto que sigue dando
+recall completo (30/30, **incluye `25.jpg`**, el caso límite de 14px que
+antes fallaba siempre). Subir a 0.9999 gana algo de precisión pero pierde
+3 escenas — no vale la pena.
 
 **Importante:** cualquier reentrenamiento de la CNN (`train.py`) resetea
 `temperature` a `1.0` en el checkpoint — hay que correr `calibrate.py` de
@@ -226,26 +236,28 @@ barrido (`evaluate.py` + filtrar detecciones ya calculadas a distintos
 Sobre las 30 escenas etiquetadas del repo (in-sample; ver más abajo por qué
 no es aún un test set real):
 
-| | Cascade 64×64 + CNN original | Cascade 24×24 + CNN reentrenada |
+| | Cascade 64×64 + CNN original | Cascade 24×24 + CNN reentrenada (ronda 3 + calibrada) |
 |---|---|---|
-| Recall | 16/30 (ceiling documentado: 14/17 en las escenas originales) | **29/30** a `conf=0.998` (default), 30/30 a `conf=0.99` |
+| Recall | 16/30 (ceiling documentado: 14/17 en las escenas originales) | **30/30** a `conf=0.9998` (default) — incluye `25.jpg` |
 | Escenas densas (20-32) | 0/12 — el cascade no proponía nada cerca de Wally | **12/12** |
-| Falsos positivos totales | no medido sistemáticamente | 417 (`conf=0.998`, default) vs. 3445 (`conf=0.90`) |
+| Falsos positivos totales | no medido sistemáticamente | **49** (`conf=0.9998`, default) vs. 1454 (`conf=0.90`) |
 
-(Confianza ya calibrada con temperature scaling, ver sección arriba — por eso
-estos números difieren de versiones previas de este documento que usaban
-`conf=0.9999`/`0.90` sin calibrar.)
+(Confianza calibrada con temperature scaling + 3ra ronda de hard-negative
+mining, ver secciones arriba — por eso estos números difieren de versiones
+previas de este documento, que llegaban como mucho a 29/30 con 417-438 FP.)
 
-La única escena que falla a `conf=0.998` es `25.jpg`, la que tiene el Wally
-más chico del dataset (14px de ancho) — el candidato correcto existe pero su
-probabilidad cae un poco por debajo del umbral.
+`25.jpg` (el Wally de 14px, antes el único caso que fallaba siempre) ahora
+se detecta correctamente — no por un cambio dirigido a ese caso puntual,
+sino como efecto colateral de la ronda 3: al entrenar con más hard
+negatives el modelo separa mejor Wally de sus falsos positivos en general,
+lo que también subió la probabilidad del candidato correcto en esa escena.
 
-Métricas de la CNN sobre validación (crops, umbral 90%): accuracy 99.55%,
-precisión 99.89%, recall 99.51%, F1 99.70%, sobre un dataset de 22370
-positivos / 7390 negativos regenerado contra el cascade nuevo (incluye hard
-negative mining con `mine_cascade` + una ronda adicional con
-`mine_round2.py`). El paper reporta, sobre 12 escenas de test: recall 84.61%
-y F1 78.54% con su modelo custom (detectó a Wally en 10/12).
+Métricas de la CNN sobre validación (crops, umbral 90%): accuracy 99.73%,
+precisión 99.78%, recall 99.82%, F1 99.80%, sobre un dataset de 22370
+positivos / 10419 negativos (incluye hard negative mining con
+`mine_cascade` + 3 rondas de `mine_round2.py`). El paper reporta, sobre 12
+escenas de test: recall 84.61% y F1 78.54% con su modelo custom (detectó a
+Wally en 10/12).
 
 **Importante:** estos números son **in-sample** — las 30 escenas usadas para
 medir son las mismas que alimentan el entrenamiento de la CNN (el cascade no
@@ -259,8 +271,8 @@ motivaron esta ronda de mejoras. Etiquetarlas (con el labeler o labelme +
 
 ### TODO / próximos pasos
 
-Recall ya está resuelto (29-30/30 in-sample, ver arriba). Lo que sigue es
-bajar los falsos positivos, en orden de ROI esperado:
+Recall ya está resuelto (30/30 in-sample, ver arriba). Lo que sigue es
+bajar los falsos positivos aún más, en orden de ROI esperado:
 
 - [ ] **Top-1 por confianza en `detect()`** (o top-N configurable) en vez de
       devolver todo lo que supera el umbral. Es el cambio de mayor ROI
@@ -269,26 +281,36 @@ bajar los falsos positivos, en orden de ROI esperado:
       positivos sin reentrenar nada. Motivado por las pruebas manuales sobre
       `17.jpg`, `26.jpg` y `chicken_love_you.jpeg` (8-27 detecciones por
       imagen, la mayoría ruido sobre personajes a rayas rojo/blanco).
-- [ ] **Otra ronda de hard-negative mining** (`mine_round2.py --round 3`)
-      contra el cascade+CNN actuales — la ronda que ya corrimos fue contra
-      una versión más débil de la CNN.
 - [x] **Calibrar la confianza** — temperature scaling (`cnn_reclassifier/calibrate.py`,
-      `T=1.499`), ver sección "Calibración de la confianza" arriba. Nuevo
-      default `conf=0.998` (antes 0.9999), mismo recall (29/30) con menos
-      falsos positivos (417 vs 438) y con puntos intermedios útiles en el
-      barrido de umbrales que antes no existían.
+      `T=1.499`), ver sección "Calibración de la confianza" arriba.
+- [x] **Otra ronda de hard-negative mining** (`mine_round2.py --round 3`)
+      contra el cascade+CNN calibrados de esta ronda: 3029 hard negatives
+      nuevos, reentrenar + recalibrar. Resultado: recall **30/30** (recupera
+      `25.jpg`) con **49 FP** totales a `conf=0.9998` (antes 417 FP a 29/30).
+      Fue el cambio de mayor impacto de esta tanda — más que la calibración
+      sola.
+- [ ] **Top-1 por confianza en `detect()`** (o top-N configurable) en vez de
+      devolver todo lo que supera el umbral. Con 49 FP totales en 30 escenas
+      (~1.6 por escena) el ROI de esto bajó bastante tras la ronda 3, pero
+      sigue siendo relevante para imágenes fuera de dominio (ver
+      `chicken_love_you.jpeg` abajo).
 - [ ] **Etiquetar `17.jpg` y `26.jpg`** para tener un test set held-out real
       (`HELD_OUT_TEST` en `prepare_dataset.py` ya las excluye del
       entrenamiento, falta anotarlas con el labeler o labelme).
-- [ ] Recuperar `25.jpg` (Wally de 14px, el caso límite conocido): más
-      positivos jitterizados a esa escala específica, o revisar si vale la
-      pena bajar `min_size` en `detectMultiScale`.
 
 #### Sanity check informal: `chicken_love_you.jpeg`
 
 No es un control negativo limpio: es un póster "encuentra 10 personajes"
 (Dwight Schrute, **Wally**, Titanic, The Dude, Pickle Rick, ...) que sí tiene
-un Wally-pollo real escondido. El 2026-08-23 se confirmó que el pipeline
-nuevo SÍ lo encuentra, entre 8 detecciones totales (con falsos positivos
-sobre personajes a rayas). Falta anotar cuál de las 8 cajas es la correcta
-para sumarla como dato de calibración.
+un Wally-pollo real escondido. Sigue sin anotarse cuál caja es la correcta,
+así que este chequeo es solo informal:
+
+- Antes de la ronda 3 (2026-08-23): 8 detecciones a `conf=0.998`.
+- Después de la ronda 3 (2026-08-24), con el default nuevo `conf=0.9998`:
+  **0 detecciones** — el mining hizo que todo lo que antes pasaba el umbral
+  en esta imagen (personajes a rayas, ninguno confirmado como el
+  Wally-pollo real) ahora quede por debajo. A `conf=0.9` reaparecen 9
+  candidatos, uno de ellos en la misma zona que antes
+  (~x=784,y=612 vs. ~x=773,y=614), así que probablemente sea supresión por
+  umbral y no una regresión real — pero sigue sin poder confirmarse sin
+  anotar la caja correcta.

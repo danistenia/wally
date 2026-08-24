@@ -19,10 +19,11 @@ import time
 from cnn_reclassifier.pipeline import WallyDetector
 from cnn_reclassifier.prepare_dataset import gather_wally_boxes, held_out_split
 
-DEFAULT_CONF = 0.998  # ver PAPER_REPRODUCTION.md: con el cascade 24x24 el
+DEFAULT_CONF = 0.9998  # ver PAPER_REPRODUCTION.md: con el cascade 24x24 el
 # umbral del paper (0.90) deja demasiado ruido; el modelo ya esta calibrado
-# con temperature scaling (cnn_reclassifier/calibrate.py), asi que este valor
-# se eligio sobre probabilidades calibradas, no saturadas
+# con temperature scaling (cnn_reclassifier/calibrate.py) y entrenado con una
+# 3ra ronda de hard-negative mining, asi que este valor da 30/30 de recall
+# in-sample con muy pocos falsos positivos (ver tabla en el doc)
 
 
 def iou(a, b):
