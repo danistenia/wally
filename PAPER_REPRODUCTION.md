@@ -194,14 +194,36 @@ que excluye esas escenas del dataset de entrenamiento, pero **`17.jpg` y
 motivaron esta ronda de mejoras. Etiquetarlas (con el labeler o labelme +
 `labelme_to_yolo.py`) haría que `evaluate.py` reporte una sección TEST real.
 
-### Cómo mejorar (trabajo futuro)
+### TODO / próximos pasos
 
-- **Etiquetar `17.jpg` y `26.jpg`** para tener una métrica de generalización
-  real, no solo in-sample.
-- Bajar más los falsos positivos: otra ronda de `mine_round2.py` ahora que
-  hay un cascade+CNN mucho más fuertes, o afinar `min_neighbors`/NMS (se
-  probó agrupar con `minNeighbors` de OpenCV pero resultó lento e
-  inconsistente con cascades de ventana chica — quedó descartado a favor de
-  filtrar solo por umbral de confianza).
-- Recuperar `25.jpg` (Wally de 14px): más positivos jitterizados a esa escala
-  específica, o revisar si vale la pena bajar `min_size` en `detectMultiScale`.
+Recall ya está resuelto (29-30/30 in-sample, ver arriba). Lo que sigue es
+bajar los falsos positivos, en orden de ROI esperado:
+
+- [ ] **Top-1 por confianza en `detect()`** (o top-N configurable) en vez de
+      devolver todo lo que supera el umbral. Es el cambio de mayor ROI
+      pendiente: "¿Dónde ESTÁ Wally?" es singular por escena, así que quedarse
+      con la detección más confiada elimina la mayoría de los falsos
+      positivos sin reentrenar nada. Motivado por las pruebas manuales sobre
+      `17.jpg`, `26.jpg` y `chicken_love_you.jpeg` (8-27 detecciones por
+      imagen, la mayoría ruido sobre personajes a rayas rojo/blanco).
+- [ ] **Otra ronda de hard-negative mining** (`mine_round2.py --round 3`)
+      contra el cascade+CNN actuales — la ronda que ya corrimos fue contra
+      una versión más débil de la CNN.
+- [ ] **Calibrar la confianza** (label smoothing o un set de calibración
+      aparte): hoy casi todo sale ~100%, el softmax está saturado y el
+      umbral no logra discriminar aciertos de errores por el número solo.
+- [ ] **Etiquetar `17.jpg` y `26.jpg`** para tener un test set held-out real
+      (`HELD_OUT_TEST` en `prepare_dataset.py` ya las excluye del
+      entrenamiento, falta anotarlas con el labeler o labelme).
+- [ ] Recuperar `25.jpg` (Wally de 14px, el caso límite conocido): más
+      positivos jitterizados a esa escala específica, o revisar si vale la
+      pena bajar `min_size` en `detectMultiScale`.
+
+#### Sanity check informal: `chicken_love_you.jpeg`
+
+No es un control negativo limpio: es un póster "encuentra 10 personajes"
+(Dwight Schrute, **Wally**, Titanic, The Dude, Pickle Rick, ...) que sí tiene
+un Wally-pollo real escondido. El 2026-08-23 se confirmó que el pipeline
+nuevo SÍ lo encuentra, entre 8 detecciones totales (con falsos positivos
+sobre personajes a rayas). Falta anotar cuál de las 8 cajas es la correcta
+para sumarla como dato de calibración.
