@@ -24,7 +24,7 @@ def main():
         "--conf",
         type=float,
         default=None,
-        help="umbral de confianza de la CNN (por defecto 0.9999, ver PAPER_REPRODUCTION.md)",
+        help="umbral de confianza calibrada de la CNN (por defecto 0.998, ver PAPER_REPRODUCTION.md)",
     )
     args = ap.parse_args()
 

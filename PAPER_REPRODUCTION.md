@@ -150,8 +150,12 @@ python -m cnn_reclassifier.train --epochs 25
 python -m cnn_reclassifier.mine_round2 --conf 0.6 --cap 120 --round 3
 python -m cnn_reclassifier.train
 
-# 4) buscar a Wally en una imagen
-python detect_wally.py --image original-images/9.jpg --out resultado.jpg --conf 0.9999
+# 4) (opcional) recalibrar la confianza tras reentrenar (ver seccion de
+#    calibracion mas abajo) — todo reentrenamiento resetea la temperatura a 1.0
+python -m cnn_reclassifier.calibrate
+
+# 5) buscar a Wally en una imagen
+python detect_wally.py --image original-images/9.jpg --out resultado.jpg --conf 0.998
 ```
 
 El umbral `--conf` controla el compromiso recall/falsos-positivos. El paper usa
@@ -159,8 +163,63 @@ El umbral `--conf` controla el compromiso recall/falsos-positivos. El paper usa
 al proponer candidatos en un rango de escalas mucho más amplio, la cantidad de
 candidatos por escena es mucho mayor que con el cascade de 64×64, así que un
 0.11% de falsos positivos a nivel de crop (F1 99.7% en validación) se traduce
-en cientos de falsos positivos por escena. Subir el umbral a **0.9999**
-(default actual del modelo guardado) recorta eso ~11x sin perder recall real.
+en cientos de falsos positivos por escena. El default actual del modelo
+guardado es **0.998**, ya sobre probabilidades **calibradas** (ver abajo) —
+antes de calibrar hacía falta subir a 0.9999 para lograr un recorte de ruido
+similar.
+
+### Calibración de la confianza (temperature scaling)
+
+Motivación (ver TODO más abajo): con el softmax sin calibrar casi todo
+candidato salía ~100% de confianza — el modelo estaba "seguro" tanto en los
+aciertos como en la mayoría de los falsos positivos, así que el número solo
+no alcanzaba para discriminarlos y el umbral tenía que elegirse a los
+tumbos entre 0.90 (5012 FP) y 0.9999 (438 FP), sin puntos intermedios útiles.
+
+Se implementó **temperature scaling** (Guo et al., 2017): un único escalar
+`T` que divide los logits antes del softmax, ajustado por descenso de
+gradiente (LBFGS, minimizando NLL) sobre el 20% de validación que separa
+`train.py`. No cambia el ranking de las predicciones — no es una técnica de
+recall/precision — sólo "achata" el softmax para que el número se lea como
+una probabilidad real y el umbral tenga más granularidad para elegir.
+
+```bash
+python -m cnn_reclassifier.calibrate   # ajusta T y lo guarda en wally_cnn.pt
+```
+
+Resultado: `T = 1.499`. Sobre el set de validación (crops, mismo tipo de
+dato con el que se entrena) el ECE ya era bajísimo antes de calibrar
+(0.13%) — ahí el modelo no está mal calibrado, el problema es de dominio:
+los candidatos reales del cascade sobre una escena completa (bordes,
+personajes parecidos a Wally) son más difíciles que el set de validación e
+igual salían saturados. Con `T=1.499` medido sobre candidatos reales de una
+escena (`17.jpg`), el número de candidatos que superan 0.9999 baja de 290 a
+94 — la calibración sí discrimina en el régimen que importa (inferencia real),
+aunque no lo mida el ECE del set de validación.
+
+Efecto práctico: el barrido de umbrales que antes saltaba de 0.90 (5012 FP)
+a 0.9999 (438 FP) sin puntos intermedios, ahora es gradual:
+
+| conf (calibrado) | recall | FP totales |
+|---|---|---|
+| 0.90 | 30/30 | 3445 |
+| 0.95 | 30/30 | 2343 |
+| **0.99** | **30/30** | **983** |
+| 0.995 | 29/30 (falla 25.jpg) | 666 |
+| **0.998 (default)** | **29/30 (falla 25.jpg)** | **417** |
+| 0.999 | 27/30 (falla 25.jpg, 30.jpg, 31.jpg) | 293 |
+| 0.9999 | 27/30 (falla 25.jpg, 30.jpg, 31.jpg) | 110 |
+
+`0.998` quedó como default porque iguala el recall del mejor punto
+pre-calibración (29/30, la misma única falla conocida `25.jpg`) con menos
+falsos positivos (417 vs 438). `0.99` es la alternativa si se prefiere
+recall 30/30 (recupera `25.jpg`) a cambio de más ruido (983 FP).
+
+**Importante:** cualquier reentrenamiento de la CNN (`train.py`) resetea
+`temperature` a `1.0` en el checkpoint — hay que correr `calibrate.py` de
+nuevo después, y probablemente re-elegir el umbral por defecto con el mismo
+barrido (`evaluate.py` + filtrar detecciones ya calculadas a distintos
+`conf`, como se hizo acá) porque la escala de confianza cambia con `T`.
 
 ## Resultados
 
@@ -169,11 +228,15 @@ no es aún un test set real):
 
 | | Cascade 64×64 + CNN original | Cascade 24×24 + CNN reentrenada |
 |---|---|---|
-| Recall | 16/30 (ceiling documentado: 14/17 en las escenas originales) | **29/30** a `conf=0.9999`, 30/30 a `conf=0.90` |
+| Recall | 16/30 (ceiling documentado: 14/17 en las escenas originales) | **29/30** a `conf=0.998` (default), 30/30 a `conf=0.99` |
 | Escenas densas (20-32) | 0/12 — el cascade no proponía nada cerca de Wally | **12/12** |
-| Falsos positivos totales | no medido sistemáticamente | 438 (`conf=0.9999`) vs. 5012 (`conf=0.90`) |
+| Falsos positivos totales | no medido sistemáticamente | 417 (`conf=0.998`, default) vs. 3445 (`conf=0.90`) |
 
-La única escena que falla a `conf=0.9999` es `25.jpg`, la que tiene el Wally
+(Confianza ya calibrada con temperature scaling, ver sección arriba — por eso
+estos números difieren de versiones previas de este documento que usaban
+`conf=0.9999`/`0.90` sin calibrar.)
+
+La única escena que falla a `conf=0.998` es `25.jpg`, la que tiene el Wally
 más chico del dataset (14px de ancho) — el candidato correcto existe pero su
 probabilidad cae un poco por debajo del umbral.
 
@@ -209,9 +272,11 @@ bajar los falsos positivos, en orden de ROI esperado:
 - [ ] **Otra ronda de hard-negative mining** (`mine_round2.py --round 3`)
       contra el cascade+CNN actuales — la ronda que ya corrimos fue contra
       una versión más débil de la CNN.
-- [ ] **Calibrar la confianza** (label smoothing o un set de calibración
-      aparte): hoy casi todo sale ~100%, el softmax está saturado y el
-      umbral no logra discriminar aciertos de errores por el número solo.
+- [x] **Calibrar la confianza** — temperature scaling (`cnn_reclassifier/calibrate.py`,
+      `T=1.499`), ver sección "Calibración de la confianza" arriba. Nuevo
+      default `conf=0.998` (antes 0.9999), mismo recall (29/30) con menos
+      falsos positivos (417 vs 438) y con puntos intermedios útiles en el
+      barrido de umbrales que antes no existían.
 - [ ] **Etiquetar `17.jpg` y `26.jpg`** para tener un test set held-out real
       (`HELD_OUT_TEST` en `prepare_dataset.py` ya las excluye del
       entrenamiento, falta anotarlas con el labeler o labelme).

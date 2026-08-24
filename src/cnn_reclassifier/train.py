@@ -156,6 +156,7 @@ def main():
                     "state_dict": model.state_dict(),
                     "input_size": INPUT_SIZE,
                     "threshold": WALLY_THRESHOLD,
+                    "temperature": 1.0,  # sin calibrar; correr calibrate.py
                     "metrics": m,
                 },
                 MODEL_PATH,

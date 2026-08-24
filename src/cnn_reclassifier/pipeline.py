@@ -69,6 +69,7 @@ class WallyDetector:
         self.model.eval()
         self.model.to(DEVICE)
         self.threshold = ck.get("threshold", 0.90)
+        self.temperature = ck.get("temperature", 1.0)
 
     def detect(
         self,
@@ -117,7 +118,8 @@ class WallyDetector:
                 if not batch_tensors:
                     return
                 batch = torch.stack(batch_tensors).to(DEVICE)
-                probs = torch.softmax(self.model(batch), dim=1)[:, 1].cpu()
+                logits = self.model(batch) / self.temperature
+                probs = torch.softmax(logits, dim=1)[:, 1].cpu()
                 for (x, y, w, h), p in zip(batch_boxes, probs.tolist()):
                     if p > conf:
                         kept.append(

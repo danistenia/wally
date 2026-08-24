@@ -19,8 +19,10 @@ import time
 from cnn_reclassifier.pipeline import WallyDetector
 from cnn_reclassifier.prepare_dataset import gather_wally_boxes, held_out_split
 
-DEFAULT_CONF = 0.9999  # ver PAPER_REPRODUCTION.md: con el cascade 24x24 el
-# umbral del paper (0.90) deja demasiado ruido
+DEFAULT_CONF = 0.998  # ver PAPER_REPRODUCTION.md: con el cascade 24x24 el
+# umbral del paper (0.90) deja demasiado ruido; el modelo ya esta calibrado
+# con temperature scaling (cnn_reclassifier/calibrate.py), asi que este valor
+# se eligio sobre probabilidades calibradas, no saturadas
 
 
 def iou(a, b):
