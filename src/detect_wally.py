@@ -11,9 +11,29 @@ buena diciendo donde NO esta; la CNN confirma donde SI).
 """
 
 import argparse
+import glob
 import os
 
 from cnn_reclassifier.pipeline import WallyDetector
+
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+VERSIONS_DIR = os.path.join(SRC_DIR, "model_versions")
+
+
+def resolve_version(version):
+    """--version 3 o --version round3-mining -> (cascade_path, model_path) de model_versions/."""
+    matches = [
+        d for d in glob.glob(os.path.join(VERSIONS_DIR, "v*"))
+        if os.path.basename(d) == f"v{version}" or os.path.basename(d).startswith(f"v{version}_")
+        or os.path.basename(d).endswith(f"_{version}")
+    ]
+    if not matches:
+        raise SystemExit(
+            f"No encontre la version '{version}' en {VERSIONS_DIR}. "
+            "Usa 'python save_version.py --list' para ver las disponibles."
+        )
+    d = matches[0]
+    return os.path.join(d, "cascade.xml"), os.path.join(d, "wally_cnn.pt")
 
 
 def main():
@@ -26,6 +46,12 @@ def main():
         default=None,
         help="umbral de confianza calibrada de la CNN (por defecto 0.9998, ver PAPER_REPRODUCTION.md)",
     )
+    ap.add_argument(
+        "--version",
+        default=None,
+        help="correr contra una version guardada (ej. '3' o 'round3-mining') en vez del modelo actual, "
+        "para comparar resultados entre versiones -- ver save_version.py",
+    )
     args = ap.parse_args()
 
     if not os.path.exists(args.image):
@@ -34,9 +60,14 @@ def main():
     out = args.out
     if out is None:
         base, ext = os.path.splitext(os.path.basename(args.image))
-        out = f"{base}_wally{ext or '.jpg'}"
+        suffix = f"_v{args.version}" if args.version else ""
+        out = f"{base}_wally{suffix}{ext or '.jpg'}"
 
-    det = WallyDetector()
+    if args.version:
+        cascade_path, model_path = resolve_version(args.version)
+        det = WallyDetector(cascade_path=cascade_path, model_path=model_path)
+    else:
+        det = WallyDetector()
     boxes = det.annotate(args.image, out, conf=args.conf)
 
     if boxes:

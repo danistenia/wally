@@ -262,25 +262,143 @@ Wally en 10/12).
 **Importante:** estos números son **in-sample** — las 30 escenas usadas para
 medir son las mismas que alimentan el entrenamiento de la CNN (el cascade no
 usa etiquetas para entrenar per se, pero sus positivos jitterizados sí salen
-de estas escenas). Hay un mecanismo de test set held-out ya armado
-(`HELD_OUT_TEST` en `cnn_reclassifier/prepare_dataset.py`, hoy `{"17", "26"}`)
-que excluye esas escenas del dataset de entrenamiento, pero **`17.jpg` y
-`26.jpg` todavía no están etiquetadas** — son las dos escenas nuevas que
-motivaron esta ronda de mejoras. Etiquetarlas (con el labeler o labelme +
-`labelme_to_yolo.py`) haría que `evaluate.py` reporte una sección TEST real.
+de estas escenas). Hay un mecanismo de test set held-out armado
+(`HELD_OUT_TEST` en `cnn_reclassifier/prepare_dataset.py`, hoy
+`{"17", "26", "33", "34"}`) que excluye esas escenas del dataset de
+entrenamiento, pero **ninguna de las 4 está etiquetada todavía** — falta
+dibujar el rectángulo de Wally con `labelme` en cada una (ver
+"Etiquetado pendiente" abajo). En cuanto tengan su `.json`/`.txt`,
+`evaluate.py` reporta una sección TEST real automáticamente (no hace falta
+tocar código: `gather_wally_boxes()` las descubre solas).
+
+`33.jpg` y `34.jpg` son escenas nuevas agregadas para este propósito
+(pósters "Where's Waldo" de alta resolución, nunca vistos por el modelo).
+`chicken_love_you.jpeg` se probó manualmente en algún momento pero
+**se decidió no sumarla ni a entrenamiento ni a test**: no es un póster
+"Wally" real (es un póster "encontrá 10 personajes" con un Wally-pollo
+escondido), así que queda solo como prueba suelta con
+`detect_wally.py --image chicken_love_you.jpeg`, fuera del pipeline formal.
+
+### Cómo medir si una iteración mejoró o empeoró
+
+Hasta ahora la única forma de notar una regresión era comparar imágenes
+anotadas a ojo entre sesiones — así fue como se sospechó (sin poder
+confirmarlo con números) que la ronda 3 de mining había empeorado el
+comportamiento sobre `chicken_love_you.jpeg`. Para no depender de eso:
+
+- **`evaluate.py` ahora guarda cada corrida** en `eval_runs.jsonl` (un JSON
+  por línea: commit de git, hash del cascade+modelo actuales, umbral usado,
+  recall y falsos positivos totales por split, y el detalle por escena).
+  Se guarda automáticamente al final de cada corrida (`--no-log` para
+  desactivarlo puntualmente).
+- **`compare_runs.py` compara dos corridas** (por defecto, la última contra
+  la anterior) y dice explícitamente MEJORÓ / IGUAL / EMPEORÓ por split
+  (train/test), más el detalle escena por escena: cuáles dejaron de
+  encontrarse, cuáles se arreglaron, y dónde subieron/bajaron los falsos
+  positivos. `--trend N` muestra las últimas N corridas en una tabla, para
+  ver la tendencia y no solo el último salto.
+
+Flujo recomendado a partir de ahora: después de cualquier cambio al pipeline
+(mining, reentrenar, calibrar, cambiar `--conf`), correr
+
+```bash
+python evaluate.py            # corre y guarda el resultado
+python compare_runs.py        # muestra el delta contra la corrida anterior
+```
+
+### Versionado de modelos (para mostrar la evolución, ej. en un post)
+
+`evaluate.py`/`compare_runs.py` loguean métricas, pero el `cascade.xml` y el
+`wally_cnn.pt` se sobreescriben en cada entrenamiento — no queda un binario
+al que volver. `save_version.py` saca una "foto" completa (los dos archivos
+de modelo + las métricas de la corrida de `evaluate.py` que coincida) en
+`model_versions/vN_<tag>/`, pensada para commitear a git (~800KB por
+versión, no hace falta Git LFS):
+
+```bash
+python evaluate.py                                    # medir antes de guardar
+python save_version.py --tag "round3-mining" --note "..."
+python save_version.py --list                          # tabla de todas las versiones
+git add model_versions/vN_<tag> && git commit           # versionar la foto
+```
+
+Para regenerar una imagen de comparación contra una versión vieja (útil para
+un post "antes/después"):
+
+```bash
+python detect_wally.py --image original-images/17.jpg --version 1
+```
+
+`v1_baseline-round3-mining` ya quedó guardada: es el estado justo antes de
+sumar escenas nuevas (cascade 24×24 + CNN ronda 3 de mining, calibrada),
+TRAIN 30/30 (48 FP), TEST held-out 1/4 (29 FP) — el punto de partida real
+para medir las próximas iteraciones.
+
+### Etiquetado pendiente
+
+`17.jpg`, `26.jpg`, `33.jpg` y `34.jpg` están reservadas como test held-out
+pero todavía no tienen `.json`. Etiquetarlas con `labelme` (ya instalado en
+`.venv/bin/labelme`; **no** relacionado con el modelo YOLO — es solo el
+nombre del formato de texto de cajas que ya se usa para 20-32):
+
+```bash
+cd src
+../.venv/bin/labelme original-images/17.jpg   # dibujar 1 rectangulo, label "wally", guardar
+```
+
+Repetir para `26.jpg`, `33.jpg`, `34.jpg`. Después:
+
+```bash
+python dataset/labelme_to_yolo.py   # json -> txt (formato que lee prepare_dataset.py)
+python evaluate.py                  # primera seccion TEST real
+python compare_runs.py --trend 3    # ver contra corridas previas si las hay
+```
 
 ### TODO / próximos pasos
 
-Recall ya está resuelto (30/30 in-sample, ver arriba). Lo que sigue es
-bajar los falsos positivos aún más, en orden de ROI esperado:
+Recall in-sample ya está resuelto (30/30, ver arriba) pero **no generaliza**:
+la primera medición real sobre el test set held-out dio **1/4** (ver abajo).
+Eso cambia la prioridad de lo que sigue:
 
+- [x] **Etiquetar el test set held-out** (`17`, `26`, `33`, `34`). Resultado
+      (2026-08-25, primera corrida real en `eval_runs.jsonl`): **1/4 recall,
+      29 FP** — encontró Wally solo en `34.jpg`; falló en `17.jpg`, `26.jpg`
+      y `33.jpg` (en esas tres ni siquiera hubo un candidato que superara
+      `conf=0.9998`). Contra el 30/30 in-sample, confirma overfitting real a
+      las 30 escenas de entrenamiento, no solo una sospecha a ojo.
+- [ ] **Conseguir más datos reales para entrenar — dos ejes distintos, no
+      confundirlos:**
+      1. **Más escenas nuevas** (páginas/pósters que hoy no están en el
+         repo) → más *backgrounds* y más poses/contextos distintos de
+         Wally. El paper usó **84 imágenes/instancias reales** de Wally;
+         este repo tiene solo **~32** (30 escenas, 2 con 2 Wallys c/u:
+         `5.jpg` y `18.jpg`). Los 22370 positivos y 10419 negativos
+         actuales son mucho volumen pero **aumentado por jitter/mining
+         sobre esa misma base chica** (`jittered_positives()` en
+         `prepare_dataset.py`) — no aportan diversidad real.
+      2. **Más anotaciones reales dentro de las escenas que ya tenemos**:
+         etiquetar a mano a los personajes "familia de Wally" —
+         Wenda/Wilma, Woof, el Mago Barbablanca, Odlaw — que el propio
+         autor de los libros diseñó para parecerse a Wally y confundir
+         (el paper lo menciona explícitamente: *"the negative data set
+         will have to contain many of these Wally look-alike
+         characters"*). Hoy los negativos "difíciles" solo salen de
+         parches al azar o de lo que el cascade confunde en esa ronda
+         (`mine_cascade()`/`mine_round2.py`) — ningún negativo viene de
+         curación humana sabiendo específicamente "esto es Woof, no
+         Wally". Son datos reales nuevos sin necesidad de conseguir ni
+         una escena adicional.
+      Prioridad alta en ambos: más probable que muevan la aguja en el
+      recall held-out que seguir ajustando umbral o mining sobre las
+      mismas 30 escenas.
+- [ ] **Investigar caso por caso por qué falla en `17`/`26`/`33`** (¿el
+      cascade ni propone un candidato cerca de Wally ahí, o lo propone y la
+      CNN lo rechaza?) — pendiente, ver conversación de esta sesión.
 - [ ] **Top-1 por confianza en `detect()`** (o top-N configurable) en vez de
-      devolver todo lo que supera el umbral. Es el cambio de mayor ROI
-      pendiente: "¿Dónde ESTÁ Wally?" es singular por escena, así que quedarse
-      con la detección más confiada elimina la mayoría de los falsos
-      positivos sin reentrenar nada. Motivado por las pruebas manuales sobre
-      `17.jpg`, `26.jpg` y `chicken_love_you.jpeg` (8-27 detecciones por
-      imagen, la mayoría ruido sobre personajes a rayas rojo/blanco).
+      devolver todo lo que supera el umbral. Con 48 FP totales en 30 escenas
+      in-sample (~1.6 por escena) el ROI bajó tras la ronda 3, pero sigue
+      siendo relevante para imágenes fuera de dominio (y ahora, para el
+      held-out real).
 - [x] **Calibrar la confianza** — temperature scaling (`cnn_reclassifier/calibrate.py`,
       `T=1.499`), ver sección "Calibración de la confianza" arriba.
 - [x] **Otra ronda de hard-negative mining** (`mine_round2.py --round 3`)
@@ -289,21 +407,17 @@ bajar los falsos positivos aún más, en orden de ROI esperado:
       `25.jpg`) con **49 FP** totales a `conf=0.9998` (antes 417 FP a 29/30).
       Fue el cambio de mayor impacto de esta tanda — más que la calibración
       sola.
-- [ ] **Top-1 por confianza en `detect()`** (o top-N configurable) en vez de
-      devolver todo lo que supera el umbral. Con 49 FP totales en 30 escenas
-      (~1.6 por escena) el ROI de esto bajó bastante tras la ronda 3, pero
-      sigue siendo relevante para imágenes fuera de dominio (ver
-      `chicken_love_you.jpeg` abajo).
-- [ ] **Etiquetar `17.jpg` y `26.jpg`** para tener un test set held-out real
-      (`HELD_OUT_TEST` en `prepare_dataset.py` ya las excluye del
-      entrenamiento, falta anotarlas con el labeler o labelme).
+- [x] **Medir mejora/regresión con números, no a ojo** — `evaluate.py` loguea
+      cada corrida en `eval_runs.jsonl` y `compare_runs.py` compara contra
+      corridas anteriores (ver sección arriba).
 
 #### Sanity check informal: `chicken_love_you.jpeg`
 
-No es un control negativo limpio: es un póster "encuentra 10 personajes"
-(Dwight Schrute, **Wally**, Titanic, The Dude, Pickle Rick, ...) que sí tiene
-un Wally-pollo real escondido. Sigue sin anotarse cuál caja es la correcta,
-así que este chequeo es solo informal:
+Queda fuera del pipeline formal (no entrena, no se mide en `evaluate.py`) —
+ver nota arriba. No es un control negativo limpio: es un póster "encuentra
+10 personajes" (Dwight Schrute, **Wally**, Titanic, The Dude, Pickle Rick,
+...) que sí tiene un Wally-pollo real escondido, nunca se confirmó cuál caja
+es la correcta, así que este chequeo sigue siendo solo informal:
 
 - Antes de la ronda 3 (2026-08-23): 8 detecciones a `conf=0.998`.
 - Después de la ronda 3 (2026-08-24), con el default nuevo `conf=0.9998`:

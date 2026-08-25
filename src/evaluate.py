@@ -13,11 +13,18 @@ Uso:
 """
 
 import argparse
+import hashlib
+import json
 import os
+import subprocess
 import time
+from datetime import datetime, timezone
 
-from cnn_reclassifier.pipeline import WallyDetector
+from cnn_reclassifier.pipeline import DEFAULT_CASCADE, DEFAULT_MODEL, WallyDetector
 from cnn_reclassifier.prepare_dataset import gather_wally_boxes, held_out_split
+
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_PATH = os.path.join(SRC_DIR, "eval_runs.jsonl")
 
 DEFAULT_CONF = 0.9998  # ver PAPER_REPRODUCTION.md: con el cascade 24x24 el
 # umbral del paper (0.90) deja demasiado ruido; el modelo ya esta calibrado
@@ -88,6 +95,67 @@ def print_table(title, rows):
     print(f"\nResumen {title}: encontrado en {found}/{n} escenas, {fp_total} falsos positivos totales")
 
 
+def summarize(rows):
+    """rows (de run()) -> resumen agregado para loguear/comparar entre corridas."""
+    n = len(rows)
+    hits = sum(1 for r in rows if r["hit"])
+    return dict(
+        n=n,
+        hits=hits,
+        recall=(hits / n) if n else None,
+        fp_total=sum(r["fp"] for r in rows),
+    )
+
+
+def git_info():
+    """(commit corto, dirty) del repo, o (None, None) si no se puede leer."""
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=SRC_DIR, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=SRC_DIR, capture_output=True, text=True, check=True,
+        ).stdout
+        return commit, bool(status.strip())
+    except Exception:
+        return None, None
+
+
+def model_fingerprint(cascade_path, model_path):
+    """Hash corto del cascade + modelo CNN actuales: identifica el estado real
+    del pipeline (mining/reentrenar) aunque no se haya hecho commit todavia."""
+    h = hashlib.sha256()
+    for p in (cascade_path, model_path):
+        try:
+            with open(p, "rb") as f:
+                h.update(f.read())
+        except OSError:
+            return None
+    return h.hexdigest()[:12]
+
+
+def log_run(conf, cascade_path, model_path, train_rows, test_rows):
+    commit, dirty = git_info()
+    record = dict(
+        timestamp=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        git_commit=commit,
+        git_dirty=dirty,
+        model_fingerprint=model_fingerprint(cascade_path, model_path),
+        conf=conf,
+        train=summarize(train_rows),
+        test=summarize(test_rows),
+        scenes=(
+            [dict(split="train", **r) for r in train_rows]
+            + [dict(split="test", **r) for r in test_rows]
+        ),
+    )
+    with open(LOG_PATH, "a") as f:
+        f.write(json.dumps(record) + "\n")
+    print(f"\n(corrida guardada en {os.path.relpath(LOG_PATH, SRC_DIR)} — ver compare_runs.py)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--conf", type=float, default=DEFAULT_CONF)
@@ -96,6 +164,10 @@ def main():
         "--sanity-image",
         default=None,
         help="imagen fuera de dominio (sin Wally) para chequear falsos positivos, ej. chicken_love_you.jpeg",
+    )
+    ap.add_argument(
+        "--no-log", action="store_true",
+        help="no guardar esta corrida en eval_runs.jsonl (por defecto se guarda)",
     )
     args = ap.parse_args()
 
@@ -107,13 +179,19 @@ def main():
     print(f"{len(all_boxes)} escenas con ground truth "
           f"({len(train_boxes)} train, {len(test_boxes)} held-out test)")
 
-    print_table("TRAIN (in-sample)", run(det, train_boxes, args.conf))
-    print_table("TEST (held-out, nunca visto por la CNN)", run(det, test_boxes, args.conf))
+    train_rows = run(det, train_boxes, args.conf)
+    test_rows = run(det, test_boxes, args.conf)
+    print_table("TRAIN (in-sample)", train_rows)
+    print_table("TEST (held-out, nunca visto por la CNN)", test_rows)
 
     if args.sanity_image:
         print(f"\n--- Sanity check ({args.sanity_image}, no deberia tener Wally) ---")
         dets = det.detect(args.sanity_image, conf=args.conf)
         print(f"{len(dets)} deteccion(es) -> {dets}")
+
+    if not args.no_log:
+        cascade_path = args.cascade or DEFAULT_CASCADE
+        log_run(args.conf, cascade_path, DEFAULT_MODEL, train_rows, test_rows)
 
 
 if __name__ == "__main__":

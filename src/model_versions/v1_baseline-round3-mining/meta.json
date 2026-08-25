@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "tag": "baseline-round3-mining",
+  "note": "Estado antes de sumar mas escenas: cascade 24x24, CNN ronda 3 de hard-negative mining, calibrada (T=1.499). TRAIN 30/30, TEST held-out 1/4 (17/26/33/34).",
+  "timestamp": "2026-08-25T06:27:38+00:00",
+  "git_commit": "152d332",
+  "git_dirty": true,
+  "model_fingerprint": "4cc146cb7976",
+  "train": {
+    "n": 30,
+    "hits": 30,
+    "recall": 1.0,
+    "fp_total": 48
+  },
+  "test": {
+    "n": 4,
+    "hits": 1,
+    "recall": 0.25,
+    "fp_total": 29
+  },
+  "conf": 0.9998
+}
