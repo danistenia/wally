@@ -304,6 +304,8 @@ Flujo recomendado a partir de ahora: después de cualquier cambio al pipeline
 ```bash
 python evaluate.py            # corre y guarda el resultado
 python compare_runs.py        # muestra el delta contra la corrida anterior
+python sweep_conf.py          # (opcional) reelegir el umbral tras reentrenar/recalibrar
+python set_default_conf.py --conf <umbral elegido>   # sincroniza el default silencioso del checkpoint
 ```
 
 ### Versionado de modelos (para mostrar la evolución, ej. en un post)
@@ -333,6 +335,23 @@ python detect_wally.py --image original-images/17.jpg --version 1
 sumar escenas nuevas (cascade 24×24 + CNN ronda 3 de mining, calibrada),
 TRAIN 30/30 (48 FP), TEST held-out 1/4 (29 FP) — el punto de partida real
 para medir las próximas iteraciones.
+
+`v2_mas-escenas-35-39` (2026-08-25): CNN reentrenada + recalibrada con 5
+escenas nuevas (`35`-`39`), mismo cascade. TRAIN 32/35 (193 FP), TEST
+held-out 3/4 (28 FP) — ver tabla comparativa en el TODO de abajo.
+
+**Bug encontrado y arreglado (2026-08-29):** `WallyDetector.detect()` usa
+`self.threshold` (guardado en el checkpoint) cuando se llama sin `--conf`
+explícito, y `train.py` siempre guarda ahí `0.90` (el umbral del paper, para
+reportar métricas de validación) — `calibrate.py` nunca lo tocaba. Resultado:
+`detect_wally.py` sin flags usaba `0.90` en vez de `0.9998` a pesar de decir
+"por defecto 0.9998" en su propia ayuda. No afectó ninguna métrica ya vista
+(`evaluate.py`/`sweep_conf.py`/`compare_runs.py` siempre pasan el conf
+explícito) — solo el uso manual rápido de `detect_wally.py`. Arreglado con
+`set_default_conf.py --conf 0.9998`, que sincroniza el threshold guardado en
+el checkpoint con el umbral de despliegue elegido. Correrlo de nuevo después
+de cada `train.py` (que resetea el campo a 0.90) + `calibrate.py` +
+`evaluate.py`/`sweep_conf.py`.
 
 ### Etiquetado pendiente
 
@@ -366,39 +385,68 @@ Eso cambia la prioridad de lo que sigue:
       y `33.jpg` (en esas tres ni siquiera hubo un candidato que superara
       `conf=0.9998`). Contra el 30/30 in-sample, confirma overfitting real a
       las 30 escenas de entrenamiento, no solo una sospecha a ojo.
-- [ ] **Conseguir más datos reales para entrenar — dos ejes distintos, no
-      confundirlos:**
-      1. **Más escenas nuevas** (páginas/pósters que hoy no están en el
-         repo) → más *backgrounds* y más poses/contextos distintos de
-         Wally. El paper usó **84 imágenes/instancias reales** de Wally;
-         este repo tiene solo **~32** (30 escenas, 2 con 2 Wallys c/u:
-         `5.jpg` y `18.jpg`). Los 22370 positivos y 10419 negativos
-         actuales son mucho volumen pero **aumentado por jitter/mining
-         sobre esa misma base chica** (`jittered_positives()` en
-         `prepare_dataset.py`) — no aportan diversidad real.
-      2. **Más anotaciones reales dentro de las escenas que ya tenemos**:
-         etiquetar a mano a los personajes "familia de Wally" —
-         Wenda/Wilma, Woof, el Mago Barbablanca, Odlaw — que el propio
-         autor de los libros diseñó para parecerse a Wally y confundir
-         (el paper lo menciona explícitamente: *"the negative data set
-         will have to contain many of these Wally look-alike
-         characters"*). Hoy los negativos "difíciles" solo salen de
-         parches al azar o de lo que el cascade confunde en esa ronda
-         (`mine_cascade()`/`mine_round2.py`) — ningún negativo viene de
-         curación humana sabiendo específicamente "esto es Woof, no
-         Wally". Son datos reales nuevos sin necesidad de conseguir ni
-         una escena adicional.
-      Prioridad alta en ambos: más probable que muevan la aguja en el
-      recall held-out que seguir ajustando umbral o mining sobre las
-      mismas 30 escenas.
-- [ ] **Investigar caso por caso por qué falla en `17`/`26`/`33`** (¿el
-      cascade ni propone un candidato cerca de Wally ahí, o lo propone y la
-      CNN lo rechaza?) — pendiente, ver conversación de esta sesión.
+- [x] **Investigar caso por caso por qué falla en `17`/`26`/`33`**
+      (`diagnose_scene.py`, 2026-08-25). Resultado en los 3 casos: el cascade
+      SÍ propone un candidato correcto (IoU 0.70-0.81) — el cuello de botella
+      está 100% en la CNN, que le da confianza baja incluso a un Wally típico
+      sin nada raro (`17.jpg`: 72%). Confirma que el problema es de
+      generalización de la CNN, no del cascade — no hacía falta el
+      reentrenamiento caro del cascade.
+- [x] **Más escenas nuevas de entrenamiento** (eje 1 de "conseguir más datos
+      reales", ver abajo el ítem 2 que sigue pendiente). Se sumaron 5 escenas
+      reales (`35`-`39`) y se reentrenó + recalibró la CNN (mismo cascade,
+      sin tocar). Resultado (`v2_mas-escenas-35-39` en `model_versions/`,
+      mismo `conf=0.9998`):
+      | | v1 (antes) | v2 (con 35-39) |
+      |---|---|---|
+      | TRAIN recall | 30/30 | 32/35 |
+      | TRAIN FP | 48 | 193 |
+      | **TEST held-out recall** | **1/4** | **3/4** |
+      | TEST FP | 29 | 28 |
+
+      Mejora real en lo que importa (held-out), a costa de perder 3 escenas
+      que antes andaban bien (`25.jpg`, `30.jpg`, `31.jpg` — los casos límite
+      de la ronda 3) y subir mucho el ruido in-sample. Es la contracara
+      esperable de agregar diversidad nueva: el modelo deja de sobreajustar
+      tan fino a las 30 escenas viejas. Sigue pendiente sumar **aún más**
+      escenas (y de estilos distintos, como `33.jpg`) para consolidar la
+      mejora sin perder los casos límite.
+- [ ] **Etiquetar personajes "familia de Wally" como negativos reales**
+      (eje 2 de "conseguir más datos reales", sigue pendiente): Wenda/Wilma,
+      Woof, el Mago Barbablanca, Odlaw dentro de las escenas que ya tenemos.
+      El paper lo menciona explícitamente: *"the negative data set will have
+      to contain many of these Wally look-alike characters"*. Hoy los
+      negativos "difíciles" solo salen de parches al azar o de lo que el
+      cascade confunde en esa ronda — ninguno viene de curación humana
+      sabiendo específicamente "esto es Woof, no Wally".
+- [x] **Barrido de umbral tras el reentreno** (`sweep_conf.py`, 2026-08-29 —
+      corre cascade+CNN una sola vez y prueba varios `--conf` sobre los
+      mismos candidatos cacheados, en vez de una corrida completa de
+      `evaluate.py` por umbral):
+      | conf | TRAIN recall | TRAIN FP | TEST recall | TEST FP |
+      |---|---|---|---|---|
+      | 0.90 | 35/35 | 5087 | **4/4** | 556 |
+      | 0.95 | 35/35 | 3343 | **4/4** | 352 |
+      | 0.99 | 35/35 | 1273 | 3/4 | 153 |
+      | 0.995 | 33/35 | 870 | 3/4 | 114 |
+      | 0.998 | 33/35 | 550 | 3/4 | 73 |
+      | 0.9995 | 32/35 | 291 | 3/4 | 41 |
+      | **0.9998 (default)** | 32/35 | 189 | 3/4 | 28 |
+      | 0.9999 | 31/35 | 138 | 2/4 | 22 |
+
+      A diferencia de la ronda 3 (donde sí existía un punto con recall
+      completo y poco ruido), acá **no hay un umbral limpio**: recall
+      completo en los dos splits (`4/4` test) solo aparece en `0.90`/`0.95`,
+      con cientos de FP. `0.9998` se mantiene como default: mismo recall
+      held-out que casi todo el rango medio (3/4) con el menor ruido de esa
+      franja. Esto es evidencia a favor de que un umbral global solo no
+      alcanza — refuerza el ítem de abajo (top-1/top-N).
 - [ ] **Top-1 por confianza en `detect()`** (o top-N configurable) en vez de
-      devolver todo lo que supera el umbral. Con 48 FP totales en 30 escenas
-      in-sample (~1.6 por escena) el ROI bajó tras la ronda 3, pero sigue
-      siendo relevante para imágenes fuera de dominio (y ahora, para el
-      held-out real).
+      devolver todo lo que supera el umbral. El barrido de arriba lo
+      confirma: a umbral bajo (0.90-0.95) hay recall completo en ambos
+      splits pero cientos de FP por escena — quedarse con el candidato más
+      confiado por escena probablemente resuelva recall y precisión al mismo
+      tiempo, algo que ningún punto del barrido logra por sí solo.
 - [x] **Calibrar la confianza** — temperature scaling (`cnn_reclassifier/calibrate.py`,
       `T=1.499`), ver sección "Calibración de la confianza" arriba.
 - [x] **Otra ronda de hard-negative mining** (`mine_round2.py --round 3`)

@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "tag": "mas-escenas-35-39",
+  "note": "Se sumaron 5 escenas reales nuevas de entrenamiento (35-39) y se reentreno/recalibro la CNN (mismo cascade, sin retocar). Con el mismo umbral viejo (conf=0.9998): TEST held-out mejoro fuerte (1/4 -> 3/4 recall, 29->28 FP) pero TRAIN empeoro (30/30->32/35 recall, 48->193 FP) -- se perdieron 25/30/31.jpg. El umbral no se re-tuneo todavia para este modelo nuevo (ver TODO); es esperable que un barrido de --conf mejore ambos numeros sin tocar el modelo. [fix 2026-08-29: se sincronizo el threshold interno del checkpoint (train.py lo dejaba en 0.90) con el conf de despliegue elegido, 0.9998, asi detect_wally.py sin --conf usa el valor correcto.]",
+  "timestamp": "2026-08-26T05:21:30+00:00",
+  "git_commit": "02d7450",
+  "git_dirty": true,
+  "model_fingerprint": "6defb40481c5",
+  "train": {
+    "n": 35,
+    "hits": 32,
+    "recall": 0.9142857142857143,
+    "fp_total": 193
+  },
+  "test": {
+    "n": 4,
+    "hits": 3,
+    "recall": 0.75,
+    "fp_total": 28
+  },
+  "conf": 0.9998
+}
