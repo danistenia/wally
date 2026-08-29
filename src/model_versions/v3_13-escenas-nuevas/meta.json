@@ -1,0 +1,22 @@
+{
+  "version": 3,
+  "tag": "13-escenas-nuevas",
+  "note": "Se sumaron 8 escenas mas (40-47, ademas de las 35-39 de v2) y se reentreno/recalibro la CNN (mismo cascade). TRAIN: 32/35->40/43 recall (91%->93%), FP 193->227. TEST held-out: recall igual (3/4), FP 28->36 (+8). 26.jpg sigue siendo el unico caso que falla en las 3 versiones (v1,v2,v3).",
+  "timestamp": "2026-08-29T16:32:30+00:00",
+  "git_commit": "7a87db7",
+  "git_dirty": true,
+  "model_fingerprint": "c1c5882e9dc2",
+  "train": {
+    "n": 43,
+    "hits": 40,
+    "recall": 0.9302325581395349,
+    "fp_total": 227
+  },
+  "test": {
+    "n": 4,
+    "hits": 3,
+    "recall": 0.75,
+    "fp_total": 36
+  },
+  "conf": 0.9998
+}
