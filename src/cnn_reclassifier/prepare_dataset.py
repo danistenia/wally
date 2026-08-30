@@ -40,7 +40,7 @@ CASCADE_PATH = os.path.join(SRC, "data_cascade_HAAR", "cascade.xml")
 # positivos/negativos/hard-negatives a la CNN. gather_wally_boxes() las
 # incluye igual (para que el script de evaluacion las pueda puntuar); quien
 # construye el dataset de entrenamiento debe filtrarlas con held_out_split().
-HELD_OUT_TEST = {"17", "26", "33", "34"}
+HELD_OUT_TEST = {"17", "26", "33", "34", "60", "61", "62", "63", "64", "65", "66", "67"}
 
 
 def held_out_split(wally_boxes):

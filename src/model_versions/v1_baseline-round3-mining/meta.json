@@ -18,5 +18,11 @@
     "recall": 0.25,
     "fp_total": 29
   },
-  "conf": 0.9998
+  "conf": 0.9998,
+  "held_out_recheck": {
+    "timestamp": "2026-08-30T16:24:38+00:00",
+    "n_scenes": 12,
+    "recall": 0.16666666666666666,
+    "fp_total": 41
+  }
 }

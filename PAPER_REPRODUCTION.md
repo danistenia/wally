@@ -340,6 +340,18 @@ para medir las próximas iteraciones.
 escenas nuevas (`35`-`39`), mismo cascade. TRAIN 32/35 (193 FP), TEST
 held-out 3/4 (28 FP) — ver tabla comparativa en el TODO de abajo.
 
+`v3_13-escenas-nuevas` (2026-08-29): +8 escenas más (`40`-`47`). TRAIN
+40/43 (227 FP), TEST held-out (el de 4 escenas de esa fecha) 3/4 (36 FP).
+
+`v4_12-escenas-simples` (2026-08-30): +12 escenas más (`48`-`59`), varias
+del estilo "imagen simple/aislada" (portadas, ilustraciones limpias, cajas
+mucho más grandes en proporción que la convención de páginas de búsqueda).
+TRAIN 51/55 (366 FP), TEST held-out (4 escenas) 3/4 (59 FP) — mismo recall
+que v3 pero con mucho más ruido, primera señal de que este tipo de imagen
+puede estar volviendo la CNN más permisiva en vez de más precisa (ver
+sanity check de `chicken_love_you.jpeg` más abajo, donde v4 marcó un
+falso positivo nuevo con 100% de confianza que v1-v3 nunca habían aceptado).
+
 **Bug encontrado y arreglado (2026-08-29):** `WallyDetector.detect()` usa
 `self.threshold` (guardado en el checkpoint) cuando se llama sin `--conf`
 explícito, y `train.py` siempre guarda ahí `0.90` (el umbral del paper, para
@@ -353,24 +365,62 @@ el checkpoint con el umbral de despliegue elegido. Correrlo de nuevo después
 de cada `train.py` (que resetea el campo a 0.90) + `calibrate.py` +
 `evaluate.py`/`sweep_conf.py`.
 
-### Etiquetado pendiente
+### Held-out ampliado a 12 escenas (2026-08-30) y comparación retroactiva
 
-`17.jpg`, `26.jpg`, `33.jpg` y `34.jpg` están reservadas como test held-out
-pero todavía no tienen `.json`. Etiquetarlas con `labelme` (ya instalado en
-`.venv/bin/labelme`; **no** relacionado con el modelo YOLO — es solo el
+Con solo 4 escenas held-out, cada una vale 25 puntos de recall — el salto de
+1/4→3/4 entre v1 y v2 podía deberse tanto a una mejora real como a que 2
+escenas cualquiera cruzaran el umbral por casualidad (con n=4 el margen de
+error del recall estimado ronda ±22 puntos). Se amplió `HELD_OUT_TEST` a 12
+escenas (`17`, `26`, `33`, `34`, `60`-`67`) — similar al tamaño que usa el
+paper original (12 escenas de test) y baja el margen de error a ~±10-13
+puntos. Regla para seguir creciendo: las escenas nuevas que se decidan
+reservar como test deben ser escenas que **ningún modelo haya usado nunca
+para entrenar** (no vale "ascender" escenas que ya son parte del training
+set de alguna versión guardada, porque dejarían de ser un examen sorpresa
+para esas versiones).
+
+Como cada versión guarda sus pesos reales (no solo sus métricas),
+`compare_versions.py` puede "tomarle el examen de nuevo" a **todas** las
+versiones guardadas contra el held-out actual, aunque en su momento se
+hayan medido contra uno más chico — es válido mientras las escenas nuevas
+sean nuevas para todas por igual (acá lo son: `60`-`67` se etiquetaron
+después de entrenar v4). Resultado, las 4 versiones sobre el mismo examen
+de 12 escenas:
+
+| versión | recall | FP (12 escenas) |
+|---|---|---|
+| v1 | 2/12 (17%) | 41 |
+| v2 | 6/12 (50%) | 52 |
+| v3 | 8/12 (67%) | 59 |
+| v4 | 8/12 (67%) | **105** |
+
+Con un test set más grande la progresión v1→v2→v3 se ve mucho más clara y
+sostenida que con las 4 escenas originales. v4 no mejora el recall sobre
+v3 y casi duplica el ruido — confirma con números lo que ya se veía en
+`chicken_love_you.jpeg`: la ronda de escenas "simples" no fue una mejora.
+`26.jpg`, `64.jpg` y `66.jpg` fallan en las 4 versiones — son los casos
+genuinamente difíciles, no una casualidad de una ronda puntual.
+(`python compare_versions.py --save-meta` guarda este resultado en el
+`meta.json` de cada versión, campo `held_out_recheck`.)
+
+### Etiquetado
+
+Las 12 escenas del held-out (y todas las de training) ya están etiquetadas.
+Para seguir sumando escenas nuevas, etiquetarlas con `labelme` (ya instalado
+en `.venv/bin/labelme`; **no** relacionado con el modelo YOLO — es solo el
 nombre del formato de texto de cajas que ya se usa para 20-32):
 
 ```bash
 cd src
-../.venv/bin/labelme original-images/17.jpg   # dibujar 1 rectangulo, label "wally", guardar
+../.venv/bin/labelme original-images/<N>.jpg   # dibujar 1 rectangulo, label "wally", guardar
 ```
 
-Repetir para `26.jpg`, `33.jpg`, `34.jpg`. Después:
+Después:
 
 ```bash
-python dataset/labelme_to_yolo.py   # json -> txt (formato que lee prepare_dataset.py)
-python evaluate.py                  # primera seccion TEST real
-python compare_runs.py --trend 3    # ver contra corridas previas si las hay
+cd dataset && python labelme_to_yolo.py && cd ..   # json -> txt (el script asume cwd=dataset/)
+python evaluate.py                                  # mide la escena nueva
+python compare_runs.py --trend 3                    # ver contra corridas previas si las hay
 ```
 
 ### TODO / próximos pasos
@@ -379,6 +429,16 @@ Recall in-sample ya está resuelto (30/30, ver arriba) pero **no generaliza**:
 la primera medición real sobre el test set held-out dio **1/4** (ver abajo).
 Eso cambia la prioridad de lo que sigue:
 
+- [x] **Ampliar el held-out a 12 escenas + comparación retroactiva**
+      (2026-08-30, ver sección "Held-out ampliado" arriba). Con 12 escenas
+      en vez de 4 la progresión v1→v2→v3 se ve sostenida y clara (17%→50%→
+      67% recall), y confirma que v4 no mejoró (mismo recall que v3, casi el
+      doble de FP).
+- [ ] **Investigar si las escenas "simples" (48-59) son la causa del
+      retroceso de v4** — son las que tienen cajas mucho más grandes en
+      proporción (hasta 18% del ancho vs. 0.8-2.2% del resto). Revisar
+      cuáles capturan cuerpo completo en vez de cara/gorro y si conviene
+      re-etiquetarlas más ajustadas o sacarlas del training set.
 - [x] **Etiquetar el test set held-out** (`17`, `26`, `33`, `34`). Resultado
       (2026-08-25, primera corrida real en `eval_runs.jsonl`): **1/4 recall,
       29 FP** — encontró Wally solo en `34.jpg`; falló en `17.jpg`, `26.jpg`

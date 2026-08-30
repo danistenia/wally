@@ -1,0 +1,28 @@
+{
+  "version": 4,
+  "tag": "12-escenas-simples",
+  "note": "Se sumaron 12 escenas mas (48-59), varias del estilo 'imagen simple/aislada' (portadas, ilustraciones limpias) en vez de paginas de busqueda densas -- algunas cajas mucho mas grandes en proporcion (hasta 18% del ancho) que la convencion anterior (0.8-2.2%). Reentreno+recalibracion, mismo cascade. TRAIN: 40/43->51/55 recall (93%->93%, practicamente igual), FP 227->366. TEST held-out: recall igual (3/4), FP 36->59 (+23, con 34.jpg duplicando su ruido: 14->30). Primera ronda donde el ruido sube claramente sin mejora de recall que lo compense -- posible indicio de que las imagenes 'simples' (recortes grandes, fuera de la distribucion tipica de candidatos del cascade) esten volviendo mas permisiva la frontera de decision. A investigar.",
+  "timestamp": "2026-08-30T15:09:03+00:00",
+  "git_commit": "537a7d2",
+  "git_dirty": true,
+  "model_fingerprint": "89aa43a7b547",
+  "train": {
+    "n": 55,
+    "hits": 51,
+    "recall": 0.9272727272727272,
+    "fp_total": 366
+  },
+  "test": {
+    "n": 4,
+    "hits": 3,
+    "recall": 0.75,
+    "fp_total": 59
+  },
+  "conf": 0.9998,
+  "held_out_recheck": {
+    "timestamp": "2026-08-30T16:28:13+00:00",
+    "n_scenes": 12,
+    "recall": 0.6666666666666666,
+    "fp_total": 106
+  }
+}
