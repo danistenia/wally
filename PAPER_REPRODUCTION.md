@@ -389,19 +389,27 @@ de 12 escenas:
 
 | versión | recall | FP (12 escenas) |
 |---|---|---|
-| v1 | 2/12 (17%) | 41 |
-| v2 | 6/12 (50%) | 52 |
-| v3 | 8/12 (67%) | 59 |
-| v4 | 8/12 (67%) | **105** |
+| v1 | 2/12 (17%) | 28 |
+| v2 | 7/12 (58%) | 58 |
+| v3 | 9/12 (75%) | 60 |
+| v4 | 9/12 (75%) | **121** |
 
 Con un test set más grande la progresión v1→v2→v3 se ve mucho más clara y
 sostenida que con las 4 escenas originales. v4 no mejora el recall sobre
 v3 y casi duplica el ruido — confirma con números lo que ya se veía en
 `chicken_love_you.jpeg`: la ronda de escenas "simples" no fue una mejora.
-`26.jpg`, `64.jpg` y `66.jpg` fallan en las 4 versiones — son los casos
-genuinamente difíciles, no una casualidad de una ronda puntual.
+`64.jpg` y `66.jpg` fallan en las 4 versiones — son los casos genuinamente
+difíciles, no una casualidad de una ronda puntual.
 (`python compare_versions.py --save-meta` guarda este resultado en el
 `meta.json` de cada versión, campo `held_out_recheck`.)
+
+**Nota (2026-08-30):** `26.jpg` se re-etiquetó con una foto de mejor calidad
+de la misma escena (la original era borrosa/de baja resolución, dificultando
+tanto anotar la caja como que el cascade proponga un candidato nítido). Con
+la imagen nueva, v2/v3/v4 SÍ encuentran a Wally ahí (antes fallaba en las 4
+versiones) — la tabla de arriba ya refleja el resultado re-medido con la
+imagen corregida contra las 4 versiones guardadas. Solo v1 sigue sin
+encontrarla.
 
 ### Etiquetado
 
