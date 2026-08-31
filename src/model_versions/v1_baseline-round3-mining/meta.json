@@ -20,9 +20,9 @@
   },
   "conf": 0.9998,
   "held_out_recheck": {
-    "timestamp": "2026-08-30T22:29:09+00:00",
+    "timestamp": "2026-08-31T01:29:33+00:00",
     "n_scenes": 12,
-    "recall": 0.16666666666666666,
-    "fp_total": 28
+    "recall": 0.25,
+    "fp_total": 22
   }
 }

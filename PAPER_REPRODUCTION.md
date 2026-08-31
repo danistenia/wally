@@ -411,6 +411,57 @@ versiones) — la tabla de arriba ya refleja el resultado re-medido con la
 imagen corregida contra las 4 versiones guardadas. Solo v1 sigue sin
 encontrarla.
 
+**Held-out final: 10 escenas, no 12 (2026-08-30).** `64.jpg` y `66.jpg` —
+justo los dos casos que fallaban en las 4 versiones — se sacaron del
+dataset por mala calidad de imagen (se eliminaron `original-images/64.jpg`,
+`64.json`, `66.jpg`, `66.json`). `HELD_OUT_TEST` queda en
+`{"17", "26", "33", "34", "60", "61", "62", "63", "65", "67"}`. Con esto el
+dataset total pasa a 57 escenas etiquetadas: 47 de entrenamiento, 10 de
+test. La tabla de arriba (medida contra las 12 originales, con `64`/`66`
+incluidas) queda como registro histórico — la próxima medición
+(`compare_versions.py`) va a reportar sobre las 10 definitivas.
+
+### Held-out final (12 escenas) y validación de fuga de datos (2026-08-30)
+
+Se agregaron `22.jpg` y `42.jpg` al held-out (reemplazando a `64`/`66`, que
+ya se habían sacado del dataset por mala calidad):
+`{"17","22","26","33","34","42","60","61","62","63","65","67"}`.
+
+Problema: `22` y `42` **ya habían sido usadas para entrenar** v2, v3 y v4 (y
+`22` también v1) antes de convertirse en held-out — cualquier buen resultado
+de esas versiones en esas dos escenas es fuga de datos (memorización), no
+generalización real. Para tener un número honesto se re-entrenaron 4
+"réplicas" (`v5`-`v8`, script nuevo `prepare_dataset_scenes.py` +
+`save_replay_version.py`): **exactamente el mismo conjunto histórico de
+escenas de entrenamiento de cada versión, pero sacando `22`/`42` donde
+correspondía** (v1→v5: -1 escena, 29; v2→v6: -1, 34; v3→v7: -2, 41; v4→v8:
+-2, 53). Nota de método: v1 se había construido con 3 rondas iterativas de
+`mine_round2.py`; v5-v8 (como v2-v4 reales) solo llevan una pasada de mining
+de `prepare_dataset.py` — v5 no es 100% comparable a v1 en metodología, solo
+en composición de datos.
+
+Las 8 versiones contra el held-out de 12 escenas actual:
+
+| versión | recall | FP | ¿entrenó con `22`/`42`? |
+|---|---|---|---|
+| v1 (original) | 3/12 (25%) | 22 | sí, con `22` |
+| v2 (original) | 8/12 (67%) | 52 | sí, con `22` |
+| v3 (original) | 11/12 (92%) | 51 | sí, con `22` y `42` |
+| v4 (original) | 11/12 (92%) | 113 | sí, con `22` y `42` |
+| **v5 (réplica limpia de v1)** | **4/12 (33%)** | 85 | no |
+| **v6 (réplica limpia de v2)** | **9/12 (75%)** | 85 | no |
+| **v7 (réplica limpia de v3)** | **9/12 (75%)** | 65 | no |
+| **v8 (réplica limpia de v4)** | **10/12 (83%)** | 51 | no |
+
+**La progresión limpia (v5→v6→v7→v8, 33%→75%→75%→83%) sigue siendo real y
+sostenida** — confirma que la mejora entre rondas no dependía de memorizar
+`22`/`42`. El ajuste más importante es v3: el 92% original estaba inflado
+por la fuga; el número real de generalización es **75%**, no 92% — es el
+que hay que citar en el post, no el original. Dato sin explicar del todo:
+v8 tiene menos de la mitad de los FP que v4 (51 vs 113) con casi el mismo
+dataset — podría ser variancia normal de entrenamiento o que esas 2 escenas
+aportaban ruido al mining; no confirmado.
+
 ### Etiquetado
 
 Las 12 escenas del held-out (y todas las de training) ya están etiquetadas.
