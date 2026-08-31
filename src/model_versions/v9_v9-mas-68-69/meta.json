@@ -1,0 +1,28 @@
+{
+  "version": 9,
+  "tag": "v9-mas-68-69",
+  "note": "Se sumaron 68.jpg y 69.jpg (2 escenas nuevas) sobre la base limpia de v8 (53 escenas, sin 22/42). TRAIN 54/55 recall, 305 FP. TEST held-out 10/12 (83%), 49 FP -- practicamente empatado con v8 (10/12, 51 FP): arregla 42.jpg pero ahora falla 61.jpg en su lugar.",
+  "timestamp": "2026-08-31T02:34:04+00:00",
+  "git_commit": "012673a",
+  "git_dirty": true,
+  "model_fingerprint": "0994644a4583",
+  "train": {
+    "n": 55,
+    "hits": 54,
+    "recall": 0.9818181818181818,
+    "fp_total": 305
+  },
+  "test": {
+    "n": 12,
+    "hits": 10,
+    "recall": 0.8333333333333334,
+    "fp_total": 49
+  },
+  "conf": 0.9998,
+  "held_out_recheck": {
+    "timestamp": "2026-08-31T03:30:20+00:00",
+    "n_scenes": 12,
+    "recall": 0.8333333333333334,
+    "fp_total": 50
+  }
+}

@@ -452,6 +452,8 @@ Las 8 versiones contra el held-out de 12 escenas actual:
 | **v6 (réplica limpia de v2)** | **9/12 (75%)** | 85 | no |
 | **v7 (réplica limpia de v3)** | **9/12 (75%)** | 65 | no |
 | **v8 (réplica limpia de v4)** | **10/12 (83%)** | 51 | no |
+| v9 (v8 + `68`,`69`) | 10/12 (83%) | 51 | no |
+| **v10 (v9 sin las 8 escenas "simples")** | **11/12 (92%)** | 70 | no |
 
 **La progresión limpia (v5→v6→v7→v8, 33%→75%→75%→83%) sigue siendo real y
 sostenida** — confirma que la mejora entre rondas no dependía de memorizar
@@ -461,6 +463,26 @@ que hay que citar en el post, no el original. Dato sin explicar del todo:
 v8 tiene menos de la mitad de los FP que v4 (51 vs 113) con casi el mismo
 dataset — podría ser variancia normal de entrenamiento o que esas 2 escenas
 aportaban ruido al mining; no confirmado.
+
+**v9 (2026-08-30):** primera versión entrenada sobre la base limpia (v8,
+53 escenas) + 2 escenas nuevas (`68`, `69`) — sin `22`/`42` desde el
+arranque, todo hecho con el flujo estándar (`prepare_dataset.py`, ya no
+hace falta el script de réplica). Resultado: **empate técnico con v8**
+(10/12 recall, 51 FP los dos) — sube el recall en `42.jpg` (que v8 fallaba)
+pero baja en `61.jpg` (que v8 sí encontraba). No es una mejora clara, es un
+intercambio lateral: con solo 2 escenas nuevas no alcanzó para mover la
+aguja del recall total, aunque cambió cuál escena puntual falla.
+
+**v10 (2026-08-30) — confirma la sospecha sobre las escenas "simples":**
+se saca del entrenamiento a `48,49,50,51,53,55,57,58` (8 de las 12 escenas
+"simples" de la ronda de v4, sospechosas desde el principio de volver la
+CNN más permisiva) sobre la base de v9 — queda en 47 escenas (menos que
+las 55 de v9). Resultado: **11/12 (92%) recall, el mejor de toda la línea
+limpia**, solo falla `42.jpg`. Confirma la sospecha: esas escenas
+efectivamente ensuciaban la frontera de decisión, no ayudaban — con
+*menos* datos de entrenamiento (47 vs 55) el modelo generaliza mejor. El
+costo es más ruido (70 FP vs 50 de v9) — el modelo quedó más sensible en
+general. `v10` es la mejor versión hasta ahora en recall held-out.
 
 ### Etiquetado
 

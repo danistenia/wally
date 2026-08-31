@@ -46,7 +46,7 @@
   ],
   "test": null,
   "held_out_recheck": {
-    "timestamp": "2026-08-31T01:34:03+00:00",
+    "timestamp": "2026-08-31T03:25:44+00:00",
     "n_scenes": 12,
     "recall": 0.3333333333333333,
     "fp_total": 85
